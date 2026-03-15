@@ -7,6 +7,8 @@ import api from "@/services/api"
 
 export default function ManagerAccounts() {
   const [accounts, setAccounts] = useState<any[]>([])
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filteredAccounts, setFilteredAccounts] = useState<any[]>([])
 
   useEffect(() => {
     load()
@@ -16,7 +18,20 @@ export default function ManagerAccounts() {
     try {
       const res = await api.get("/accounts")
       setAccounts(res.data)
+      setFilteredAccounts(res.data)
     } catch (e) { console.error(e) }
+  }
+
+  const handleSearch = () => {
+    if (!searchTerm.trim()) {
+      setFilteredAccounts(accounts)
+      return
+    }
+    const filtered = accounts.filter(acc => 
+      acc.account_number?.includes(searchTerm) || 
+      acc.customer_profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    setFilteredAccounts(filtered)
   }
 
   const changeStatus = async (id: string, newStatus: string) => {
@@ -33,7 +48,24 @@ export default function ManagerAccounts() {
       <h2 className="text-3xl font-bold tracking-tight mb-6">Account Management</h2>
       <Card>
         <CardHeader>
-          <CardTitle>All Customer Accounts</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>All Customer Accounts</CardTitle>
+            <div className="flex gap-2">
+              <input 
+                 type="text" 
+                 placeholder="Search name or account..." 
+                 value={searchTerm}
+                 onChange={(e) => setSearchTerm(e.target.value)}
+                 className="px-3 py-1.5 border rounded-lg text-sm w-64 outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button 
+                onClick={handleSearch}
+                className="bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-primary/90 transition"
+              >
+                Search
+              </button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -49,7 +81,7 @@ export default function ManagerAccounts() {
                 </tr>
               </thead>
               <tbody className="text-center">
-                {accounts.map((acc, i) => (
+                {filteredAccounts.map((acc, i) => (
                   <tr key={i} className="bg-white border-b hover:bg-gray-50">
                     <td className="px-6 py-4 text-left font-medium text-gray-900">{acc.customer_profile?.full_name || 'N/A'}</td>
                     <td className="px-6 py-4 text-left font-mono">{acc.account_number}</td>

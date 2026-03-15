@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Bell, Send, Loader2, AlertTriangle, CheckCircle2, History } from "lucide-react"
@@ -150,8 +151,9 @@ export default function CustomerComplaints() {
                         Urgent Issue?
                     </h4>
                     <p className="text-xs text-rose-800 leading-relaxed">
-                        For immediate assistance regarding blocked cards or suspicious activity, please use the <span className="font-bold underline">Requests</span> page or contact our 24/7 hotline.
+                        For immediate assistance regarding blocked cards or suspicious activity, please use the <Link href="/customer/requests" className="font-bold underline hover:text-rose-600 transition-colors">Requests</Link> page or contact our 24/7 hotline.
                     </p>
+
                 </div>
             </div>
         </div>

@@ -18,8 +18,10 @@ export function Sidebar({ role }: { role: string }) {
       { name: 'Accounts', href: '/manager/accounts', icon: List },
       { name: 'Customers', href: '/manager/customers', icon: Users },
       { name: 'Alerts', href: '/manager/alerts', icon: Activity },
-      { name: 'Complaints', href: '/manager/complaints', icon: AlertTriangle },
       { name: 'Approvals', href: '/manager/approvals', icon: CheckSquare },
+      { name: 'Profile Requests', href: '/manager/profile-requests', icon: Shield },
+      { name: 'Chat (Enquiries)', href: '/manager/enquiries', icon: HelpCircle },
+      { name: 'Complaints', href: '/manager/complaints', icon: AlertTriangle },
     ]
   } else if (role === 'md') {
     navItems = [
@@ -27,6 +29,7 @@ export function Sidebar({ role }: { role: string }) {
       { name: 'Accounts', href: '/md/accounts', icon: List },
       { name: 'Reports', href: '/md/reports', icon: Activity },
       { name: 'Escalations', href: '/md/escalations', icon: AlertTriangle },
+      { name: 'Complaints (All)', href: '/manager/complaints', icon: AlertTriangle },
     ]
   } else if (role === 'admin') {
     navItems = [

@@ -10,13 +10,8 @@
     ],
     "venvPath": "backend",
     "venv": "venv",
-    "executionEnvironments": [
-        {
-            "root": "backend",
-            "extraPaths": [
-                "."
-            ]
-        }
+    "extraPaths": [
+        "./backend"
     ],
     "typeCheckingMode": "off",
     "reportMissingImports": true,

@@ -15,7 +15,9 @@ export default function ManagerAlerts() {
     async function fetchAlerts() {
       try {
         const res = await api.get("/executions")
-        const filtered = res.data.filter((e:any) => e.workflows?.name === 'LOW_BALANCE_MONITORING')
+        const filtered = res.data.filter((e:any) => 
+          e.workflow_name === 'LOW_BALANCE_MONITORING' && e.status === 'completed'
+        )
         setAlerts(filtered)
       } catch (e) {
         console.error(e)

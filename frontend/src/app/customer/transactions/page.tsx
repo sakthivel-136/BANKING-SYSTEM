@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+
 import api from "@/services/api"
 import { ArrowUpRight, ArrowDownRight, Download, Calendar as CalendarIcon, Filter, Loader2 } from "lucide-react"
 import { format, isAfter, isBefore, startOfDay, endOfDay } from "date-fns"
@@ -49,8 +49,8 @@ export default function CustomerTransactions() {
     fetchData()
   }, [])
 
-  // Apply visual filter
-  useEffect(() => {
+  // No automatic filtering on date change
+  const applyFilters = () => {
     let filtered = [...transactions]
     if (startDate) {
       filtered = filtered.filter(t => isAfter(new Date(t.created_at), startOfDay(new Date(startDate))) || format(new Date(t.created_at), "yyyy-MM-dd") === startDate)
@@ -59,7 +59,8 @@ export default function CustomerTransactions() {
       filtered = filtered.filter(t => isBefore(new Date(t.created_at), endOfDay(new Date(endDate))) || format(new Date(t.created_at), "yyyy-MM-dd") === endDate)
     }
     setFilteredTransactions(filtered)
-  }, [startDate, endDate, transactions])
+  }
+
 
   const generatePDF = () => {
     const doc = new jsPDF()
@@ -131,7 +132,8 @@ export default function CustomerTransactions() {
   }
 
   return (
-    <DashboardLayout role="customer">
+    <>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-gray-900">Transaction History</h2>
@@ -177,14 +179,21 @@ export default function CustomerTransactions() {
                   />
                 </div>
              </div>
-             <div className="w-full sm:w-auto">
+             <div className="w-full sm:w-auto flex flex-row gap-2">
                 <button 
-                  onClick={() => { setStartDate(""); setEndDate("") }}
-                  className="w-full flex justify-center items-center gap-2 px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+                  onClick={applyFilters}
+                  className="flex-1 flex justify-center items-center gap-2 px-6 py-2 bg-primary text-white shadow-sm text-sm font-medium rounded-lg hover:bg-primary/90 focus:outline-none"
                 >
-                  <Filter className="w-4 h-4 text-gray-500" /> Clear Filters
+                  <Filter className="w-4 h-4" /> Search
+                </button>
+                <button 
+                  onClick={() => { setStartDate(""); setEndDate(""); setFilteredTransactions(transactions) }}
+                  className="flex-1 flex justify-center items-center gap-2 px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+                >
+                  Clear
                 </button>
              </div>
+
           </div>
         </CardContent>
       </Card>
@@ -253,6 +262,7 @@ export default function CustomerTransactions() {
           )}
         </CardContent>
       </Card>
-    </DashboardLayout>
+    </>
+
   )
 }

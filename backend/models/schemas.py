@@ -136,3 +136,14 @@ class WorkflowRuleBase(BaseModel):
     condition: str
     next_step_id: Optional[UUID] = None
     priority: int = 0
+
+# Staff Onboarding
+class StaffCreationRequest(BaseModel):
+    full_name: str
+    email: EmailStr
+    aadhaar_number: str
+
+class StaffVerifySetup(BaseModel):
+    email: str
+    otp_code: str
+    new_password: str

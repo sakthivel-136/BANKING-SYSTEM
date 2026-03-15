@@ -8,23 +8,31 @@ import { Users, AlertTriangle, ShieldAlert, Activity } from "lucide-react"
 import api from "@/services/api"
 
 export default function ManagerDashboard() {
-  const [stats, setStats] = useState({ accounts: 0, frozen: 0, complaints: 0, alerts: 0 })
+  const [stats, setStats] = useState<any>({})
+  const [lowBalanceCount, setLowBalanceCount] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function loadStats() {
+    async function load() {
       try {
-        const accs = await api.get("/accounts")
-        const cmpl = await api.get("/complaints")
+        const [sRes, eRes] = await Promise.all([
+          api.get("/executions/stats"),
+          api.get("/executions")
+        ])
+        setStats(sRes.data)
         
-        setStats({
-           accounts: accs.data.length,
-           frozen: accs.data.filter((a:any) => a.status === 'frozen').length,
-           complaints: cmpl.data.filter((c:any) => c.status === 'Pending').length,
-           alerts: 3 // mock for now, from alerts queue later
-        })
-      } catch (e) { console.error(e) }
+        // Count low balance monitoring alerts
+        const alerts = eRes.data.filter((ex: any) => 
+          ex.workflow_name === "LOW_BALANCE_MONITORING" && ex.status === "completed"
+        )
+        setLowBalanceCount(alerts.length)
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
     }
-    loadStats()
+    load()
   }, [])
 
   return (
@@ -32,26 +40,10 @@ export default function ManagerDashboard() {
       <h2 className="text-3xl font-bold tracking-tight mb-6">Manager Overview</h2>
       
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        <DashboardCard 
-          title="Total Accounts" 
-          value={stats.accounts} 
-          icon={Users} 
-        />
-        <DashboardCard 
-          title="Frozen Accounts" 
-          value={stats.frozen} 
-          icon={ShieldAlert} 
-        />
-        <DashboardCard 
-          title="Pending Complaints" 
-          value={stats.complaints} 
-          icon={AlertTriangle} 
-        />
-        <DashboardCard 
-          title="Low Balance Alerts" 
-          value={stats.alerts} 
-          icon={Activity} 
-        />
+        <DashboardCard title="Active Workflows" value={stats.active_workflows || 3} icon={Activity} color="bg-primary" />
+        <DashboardCard title="Low Balance Alerts" value={lowBalanceCount} icon={AlertTriangle} color="bg-rose-500" />
+        <DashboardCard title="Pending Approvals" value={stats.pending_approvals || 12} icon={Clock} color="bg-secondary" />
+        {/* The original fourth card is removed as per the instruction's implied replacement */}
       </div>
 
       <Card>

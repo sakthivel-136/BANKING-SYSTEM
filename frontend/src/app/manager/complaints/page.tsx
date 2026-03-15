@@ -41,11 +41,36 @@ export default function ManagerComplaints() {
           <Card key={i}>
             <CardHeader className="bg-gray-50 border-b pb-4">
               <div className="flex justify-between items-start">
-                 <div>
-                   <CardTitle className="text-lg">{c.title}</CardTitle>
-                   <p className="text-sm text-gray-500 mt-1">From: {c.customer_profile?.full_name} | {new Date(c.created_at).toLocaleString()}</p>
-                 </div>
-                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${c.status === 'Resolved' ? 'bg-green-100 text-green-800' : c.status === 'In Review' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>{c.status}</span>
+                  <div className="flex-1">
+                    <CardTitle className="text-lg">{c.title}</CardTitle>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mt-2 font-medium">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-gray-400 font-bold">CUSTOMER ID:</span> {c.customer_id}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-gray-400 font-bold">NAME:</span> {c.customer_profile?.full_name}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-gray-400 font-bold">EMAIL:</span> {c.customer_profile?.email}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-gray-400 font-bold">PHONE:</span> {c.customer_profile?.phone_number || 'N/A'}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-gray-400 font-bold">DATE:</span> {new Date(c.created_at).toLocaleString()}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-gray-400 font-bold">TICKET ID:</span> {c.complaint_id}
+                      </span>
+                    </div>
+                  </div>
+
+                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    c.status === 'Resolved' ? 'bg-green-100 text-green-800' : 
+                    c.status === 'In Review' ? 'bg-blue-100 text-blue-800' : 
+                    c.status === 'Escalated' ? 'bg-red-100 text-red-800' : 
+                    'bg-yellow-100 text-yellow-800'
+                  }`}>{c.status}</span>
               </div>
             </CardHeader>
             <CardContent className="pt-4 space-y-4">
@@ -71,7 +96,12 @@ export default function ManagerComplaints() {
                   <div className="flex gap-2">
                      <button onClick={() => updateComplaint(c.complaint_id, 'Resolved', true)} className="bg-green-600 text-white text-xs px-4 py-2 rounded shadow-sm hover:bg-green-700 focus:outline-none">Mark Resolved</button>
                      <button onClick={() => updateComplaint(c.complaint_id, 'In Review', true)} className="bg-blue-600 text-white text-xs px-4 py-2 rounded shadow-sm hover:bg-blue-700 focus:outline-none">Update & Keep In Review</button>
-                     <button className="bg-red-50 text-red-600 border border-red-200 text-xs px-4 py-2 rounded shadow-sm hover:bg-red-100 focus:outline-none ml-auto">Escalate to MD</button>
+                     <button 
+                        onClick={() => updateComplaint(c.complaint_id, 'Escalated', false)} 
+                        className="bg-red-50 text-red-600 border border-red-200 text-xs px-4 py-2 rounded shadow-sm hover:bg-red-100 focus:outline-none ml-auto"
+                      >
+                        Escalate to MD
+                      </button>
                   </div>
                 </div>
               )}

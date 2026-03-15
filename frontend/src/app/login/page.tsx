@@ -24,6 +24,8 @@ export default function Login() {
   const [otpStep, setOtpStep] = useState<"request" | "verify">("request")
   const [otpCode, setOtpCode] = useState("")
   const [successMsg, setSuccessMsg] = useState("")
+  const [isFirstTimeStaff, setIsFirstTimeStaff] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
 
   const supabase = createBrowserClient(
      process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -197,8 +199,79 @@ export default function Login() {
                   <button type="submit" disabled={loading} className="mt-4 w-full flex justify-center py-2.5 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none transition-colors disabled:opacity-70">
                     {loading ? "Authenticating..." : "Sign in securely"}
                   </button>
+                  <button 
+                    type="button"
+                    onClick={() => { setIsFirstTimeStaff(true); setOtpStep("request"); setError(""); setSuccessMsg(""); }}
+                    className="mt-3 w-full text-center text-xs text-primary hover:underline font-medium"
+                  >
+                    First Time Staff Login? Set Password
+                  </button>
                 </div>
               </form>
+            ) : isFirstTimeStaff ? (
+              // First Time Staff Onboarding Flow
+              <div className="space-y-5">
+                {otpStep === "request" ? (
+                  <form onSubmit={handleCustomerOTPRequest} className="space-y-4">
+                    <label className="block text-sm font-medium text-gray-700">Staff Email</label>
+                    <input 
+                      type="email" required 
+                      className="w-full border border-gray-300 rounded-md py-2.5 px-3 text-sm focus:ring-primary focus:border-primary"
+                      placeholder="manager@smartbank.test"
+                      value={customerId}
+                      onChange={(e) => setCustomerId(e.target.value)}
+                    />
+                    <button type="submit" disabled={loading} className="w-full py-2.5 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 transition">
+                      {loading ? "Sending..." : "Send OTP to Email"}
+                    </button>
+                    <button type="button" onClick={() => setIsFirstTimeStaff(false)} className="w-full text-xs text-gray-500 hover:text-gray-700">Back to Password Login</button>
+                  </form>
+                ) : (
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    setLoading(true);
+                    setError("");
+                    try {
+                      await api.post("/auth/staff/verify-and-setup", {
+                        email: customerId,
+                        otp_code: otpCode,
+                        new_password: newPassword
+                      });
+                      setSuccessMsg("Password set successfully! Please login with your new password.");
+                      setIsFirstTimeStaff(false);
+                      setOtpStep("request");
+                    } catch (err: any) {
+                      setError(err.response?.data?.detail || "Setup failed");
+                    } finally {
+                      setLoading(false);
+                    }
+                  }} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">6-Digit OTP</label>
+                      <input 
+                        type="text" required maxLength={6}
+                        className="w-full border border-gray-300 rounded-md py-2 px-3 text-center text-2xl tracking-widest font-mono"
+                        placeholder="••••••"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Set Your Password</label>
+                      <input 
+                        type="password" required minLength={8}
+                        className="w-full border border-gray-300 rounded-md py-2 px-3 text-sm"
+                        placeholder="Choose a strong password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <button type="submit" disabled={loading} className="w-full py-2.5 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 transition shadow-md shadow-primary/10">
+                      {loading ? "Setting Up..." : "Set Password & Finish"}
+                    </button>
+                  </form>
+                )}
+              </div>
             ) : (
               // Customer Login Flow
               <>

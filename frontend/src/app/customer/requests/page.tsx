@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+
 import { Card, CardContent } from "@/components/ui/card"
+
 import { FileText, Send, Loader2, AlertCircle, Clock, CheckCircle2 } from "lucide-react"
 import api from "@/services/api"
 
@@ -74,7 +76,8 @@ export default function RequestsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-8">
+    <>
+
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <FileText className="text-blue-600 w-8 h-8" />
@@ -117,20 +120,21 @@ export default function RequestsPage() {
                                         <option value="deactivate">Deactivate (Temp)</option>
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Duration (Months)</label>
-                                    <select 
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                                        value={duration}
-                                        onChange={(e) => setDuration(e.target.value)}
-                                    >
-                                        <option value="1">1 Month</option>
-                                        <option value="2">2 Months</option>
-                                        <option value="3">3 Months</option>
-                                        <option value="6">6 Months</option>
-                                        <option value="12">1 Year</option>
-                                    </select>
-                                </div>
+                                {actionType === "deactivate" && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Duration</label>
+                                        <select 
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                                            value={duration}
+                                            onChange={(e) => setDuration(e.target.value)}
+                                        >
+                                            <option value="3">3 Months</option>
+                                            <option value="6">6 Months</option>
+                                            <option value="999">Lifelong Deactivation</option>
+                                        </select>
+                                    </div>
+                                )}
+
                             </div>
 
                             <div>
@@ -193,6 +197,7 @@ export default function RequestsPage() {
             </div>
         </div>
       </div>
-    </div>
+    </>
+
   )
 }

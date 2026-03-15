@@ -12,6 +12,8 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [step, setStep] = useState<"form" | "otp">("form")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filteredCustomers, setFilteredCustomers] = useState<any[]>([])
   const [requestId, setRequestId] = useState("")
   const [otpCode, setOtpCode] = useState("")
   
@@ -43,6 +45,7 @@ export default function CustomersPage() {
     try {
       const res = await api.get("/customers")
       setCustomers(res.data)
+      setFilteredCustomers(res.data)
     } catch (e) {
       console.error(e)
     } finally {
@@ -95,6 +98,19 @@ export default function CustomersPage() {
     }
   }
 
+  const handleSearch = () => {
+    if (!searchTerm.trim()) {
+      setFilteredCustomers(customers)
+      return
+    }
+    const filtered = customers.filter(c => 
+      c.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.phone_number?.includes(searchTerm)
+    )
+    setFilteredCustomers(filtered)
+  }
+
   const resetModal = () => {
     setShowModal(false)
     setStep("form")
@@ -120,13 +136,23 @@ export default function CustomersPage() {
             <CardTitle className="text-lg flex items-center gap-2">
               <Users className="w-5 h-5 text-gray-500" /> All Customers
             </CardTitle>
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input 
-                 type="text" 
-                 placeholder="Search customers..." 
-                 className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-primary focus:border-primary outline-none"
-              />
+            <div className="flex gap-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input 
+                   type="text" 
+                   placeholder="Search customers..." 
+                   value={searchTerm}
+                   onChange={(e) => setSearchTerm(e.target.value)}
+                   className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                />
+              </div>
+              <button 
+                onClick={handleSearch}
+                className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary/90 transition shadow-sm flex items-center gap-2"
+              >
+                <Search className="w-4 h-4" /> Search
+              </button>
             </div>
           </div>
         </CardHeader>
@@ -143,23 +169,29 @@ export default function CustomersPage() {
                     <th className="px-6 py-3 font-semibold">Name</th>
                     <th className="px-6 py-3 font-semibold">Email</th>
                     <th className="px-6 py-3 font-semibold">Phone</th>
+                    <th className="px-6 py-3 font-semibold">PAN Card</th>
+                    <th className="px-6 py-3 font-semibold">DOB</th>
+                    <th className="px-6 py-3 font-semibold">Location</th>
                     <th className="px-6 py-3 font-semibold">Registered</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {customers.map((c) => (
+                  {filteredCustomers.map((c) => (
                     <tr key={c.customer_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 font-medium text-gray-900">{c.full_name}</td>
-                      <td className="px-6 py-4 text-gray-600">{c.email}</td>
+                      <td className="px-6 py-4 text-gray-600 font-mono text-xs">{c.email}</td>
                       <td className="px-6 py-4 text-gray-600">{c.phone_number || "—"}</td>
-                      <td className="px-6 py-4 text-gray-600">
+                      <td className="px-6 py-4 text-gray-600 font-mono text-xs uppercase">{c.pan_card_number || "—"}</td>
+                      <td className="px-6 py-4 text-gray-600 text-xs">{c.date_of_birth || "—"}</td>
+                      <td className="px-6 py-4 text-gray-600 text-xs">{c.city || "—"}</td>
+                      <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
                         {c.created_at ? format(new Date(c.created_at), "MMM d, yyyy") : "—"}
                       </td>
                     </tr>
                   ))}
-                  {customers.length === 0 && (
+                  {filteredCustomers.length === 0 && (
                      <tr>
-                        <td colSpan={4} className="px-6 py-8 text-center text-gray-500">No customers found</td>
+                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">No customers found</td>
                      </tr>
                   )}
                 </tbody>
