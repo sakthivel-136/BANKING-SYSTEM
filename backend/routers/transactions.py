@@ -97,6 +97,8 @@ def verify_operation(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_cur
         return {"message": f"{op_req['operation_type'].capitalize()} successful!", "result": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/transfer-request")
 def request_transfer(req: TransferRequestModel, user: Dict[str, Any] = Depends(get_current_user)):
     # Validate account ownership
     acc_res = supabase.table("accounts").select("*, customer_profile(email)").eq("account_id", req.account_id).execute()

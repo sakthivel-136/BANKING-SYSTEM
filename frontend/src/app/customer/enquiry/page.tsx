@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { MessageSquare, Send, Loader2, User, Headset, Clock } from "lucide-react"
+import { MessageSquare, Send, Loader2, User, Headset, Clock, XCircle } from "lucide-react"
 import api from "@/services/api"
 
 export default function CustomerEnquiry() {
@@ -48,6 +48,16 @@ export default function CustomerEnquiry() {
       alert("Failed to send enquiry: " + (e.response?.data?.detail || "Unknown error"))
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleEndChat = async (id: string) => {
+    if (!confirm("Are you sure you want to end this chat? It will be archived and removed from your view.")) return;
+    try {
+      await api.put(`/enquiries/${id}/close`)
+      await load()
+    } catch (err: any) {
+      alert("Failed to end chat: " + (err.response?.data?.detail || err.message))
     }
   }
 

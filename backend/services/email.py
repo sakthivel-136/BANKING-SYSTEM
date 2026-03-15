@@ -49,7 +49,7 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
 
 # ── Specific notification functions ──────────────────────────────────
 
-def send_low_balance_alert(customer_name: str, to_email: str, account_number: str, balance: float):
+def send_low_balance_alert(customer_name: str, to_email: str, account_number: str, balance: float, threshold: float = 1000.0):
     subject = "⚠️ Low Balance Alert — SmartBank"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
@@ -62,11 +62,14 @@ def send_low_balance_alert(customer_name: str, to_email: str, account_number: st
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px 16px;margin:16px 0">
           <p style="margin:0;color:#78350f;font-weight:600">⚠️ Low Balance Warning</p>
           <p style="margin:6px 0 0;color:#78350f;font-size:13px">
-            Your account ending <b>••••{_mask_account(account_number)}</b> has a balance of 
-            <b>₹{balance:,.2f}</b>, which is below the minimum of ₹1,000.
+            Your account ending <b>••••{_mask_account(account_number)}</b> currently has a balance of
+            <b>₹{balance:,.2f}</b>, which is below the required minimum of <b>₹{threshold:,.2f}</b>.
           </p>
         </div>
-        <p style="color:#475569;font-size:13px">Please deposit funds to avoid a fine or account freeze.</p>
+        <p style="color:#475569;font-size:13px">
+          Please deposit funds immediately to avoid a penalty fine on your account.
+          If the balance remains below the minimum by the 10th of this month, a fine will be automatically charged.
+        </p>
         <a href="#" style="display:inline-block;background:#1E3A8A;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;margin-top:8px">Deposit Now</a>
       </div>
       <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
@@ -167,6 +170,285 @@ def send_unfreeze_approved(customer_name: str, to_email: str, account_number: st
           <p style="margin:0;color:#166534;font-weight:600">🔓 Your account <b>••••{_mask_account(account_number)}</b> has been successfully unfrozen.</p>
           <p style="margin:6px 0 0;color:#166534;font-size:13px">You can now resume all banking operations.</p>
         </div>
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+def send_account_blocked_notice(customer_name: str, to_email: str, account_number: str, reason: str = "policy violation"):
+    subject = "🚫 Account Blocked — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Account Notification</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#991b1b;font-weight:600">🚫 Your account has been blocked</p>
+          <p style="margin:6px 0 0;color:#991b1b;font-size:13px">
+            Account <b>••••{_mask_account(account_number)}</b> has been blocked due to: <b>{reason}</b>.
+          </p>
+        </div>
+        <p style="color:#475569;font-size:13px">All transactions and access to this account have been suspended. To request unblocking, please submit a request through your customer portal or contact your branch.</p>
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+def send_account_unblocked_notice(customer_name: str, to_email: str, account_number: str):
+    subject = "✅ Account Unblocked — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Account Notification</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#166534;font-weight:600">✅ Your account <b>••••{_mask_account(account_number)}</b> has been successfully unblocked.</p>
+          <p style="margin:6px 0 0;color:#166534;font-size:13px">You can now resume all banking operations. All restrictions have been lifted.</p>
+        </div>
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+def send_withdrawal_confirmation(customer_name: str, to_email: str, account_number: str, amount: float, balance_after: float):
+    subject = "💸 Withdrawal Successful — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Transaction Confirmation</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#166534;font-weight:600">💸 Withdrawal Successful</p>
+          <p style="margin:6px 0 0;color:#166534;font-size:13px">
+            <b>₹{amount:,.2f}</b> has been withdrawn from account <b>••••{_mask_account(account_number)}</b>
+          </p>
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid #e2e8f0"><td style="padding:8px 0;color:#64748b">Amount Withdrawn</td><td style="text-align:right;font-weight:600;color:#dc2626">–₹{amount:,.2f}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Balance After</td><td style="text-align:right;font-weight:600">₹{balance_after:,.2f}</td></tr>
+        </table>
+        {"<p style='margin-top:16px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;color:#92400e;font-size:13px'>⚠️ <b>Low Balance Warning:</b> Your balance is below the minimum threshold of ₹1,000. Please deposit funds soon.</p>" if balance_after < 1000 else ""}
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+def send_charge_notice(customer_name: str, to_email: str, account_number: str, charge_amount: float, reason: str, balance_after: float):
+    subject = "🏦 Bank Charge Applied — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Service Charge Notice</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#9a3412;font-weight:600">🏦 Service Charge Deducted</p>
+          <p style="margin:6px 0 0;color:#9a3412;font-size:13px">
+            A bank service charge of <b>₹{charge_amount:,.2f}</b> has been applied to account <b>••••{_mask_account(account_number)}</b>
+          </p>
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid #e2e8f0"><td style="padding:8px 0;color:#64748b">Charge Amount</td><td style="text-align:right;font-weight:600;color:#dc2626">–₹{charge_amount:,.2f}</td></tr>
+          <tr style="border-bottom:1px solid #e2e8f0"><td style="padding:8px 0;color:#64748b">Reason</td><td style="text-align:right">{reason}</td></tr>
+          <tr><td style="padding:8px 0;color:#64748b">Balance After</td><td style="text-align:right;font-weight:600">₹{balance_after:,.2f}</td></tr>
+        </table>
+        <p style="color:#475569;font-size:13px;margin-top:12px">If you have questions about this charge, please contact your branch or raise an enquiry through the SmartBank portal.</p>
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+def send_account_deactivated_notice(customer_name: str, to_email: str, account_number: str, duration: str):
+    subject = "⛔ Account Deactivated — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Account Notification</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#991b1b;font-weight:600">⛔ Your account has been deactivated</p>
+          <p style="margin:6px 0 0;color:#991b1b;font-size:13px">
+            Account <b>••••{_mask_account(account_number)}</b> has been deactivated. Duration: <b>{duration}</b>.
+          </p>
+        </div>
+        <p style="color:#475569;font-size:13px">If you believe this is in error, please contact your branch immediately.</p>
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+# ── New Charge Email Notifications ────────────────────────────────────────────────────
+
+def send_min_balance_fine_notice(
+    customer_name: str,
+    to_email: str,
+    account_number: str,
+    fine_amount: float,
+    balance_after: float,
+    account_type: str,
+):
+    """Sent when a minimum balance fine is charged on the 10th of the month."""
+    subject = "💸 Minimum Balance Fine Charged — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Bank Charge Notice</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#991b1b;font-weight:600">💸 Minimum Balance Fine Deducted</p>
+          <p style="margin:6px 0 0;color:#991b1b;font-size:13px">
+            Your <b>{account_type.capitalize()}</b> account ending
+            <b>••••{_mask_account(account_number)}</b> did not maintain the required minimum balance
+            this month. A fine of <b>₹{fine_amount:,.2f}</b> has been deducted.
+          </p>
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid #e2e8f0">
+            <td style="padding:8px 0;color:#64748b">Fine Amount</td>
+            <td style="text-align:right;font-weight:600;color:#dc2626">–₹{fine_amount:,.2f}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b">Balance After Deduction</td>
+            <td style="text-align:right;font-weight:600">₹{balance_after:,.2f}</td>
+          </tr>
+        </table>
+        <p style="color:#475569;font-size:13px;margin-top:12px">
+          To avoid future fines, please ensure your account maintains the required minimum balance.
+          If you have any questions, please contact your branch or raise an enquiry through the SmartBank portal.
+        </p>
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+def send_monthly_notification_charge_notice(
+    customer_name: str,
+    to_email: str,
+    account_number: str,
+    balance_after: float,
+):
+    """Sent on the 10th of each month for the ₹50 notification charge."""
+    subject = "🔔 Monthly Notification Charge — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Monthly Notification Charge</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#9a3412;font-weight:600">🔔 Monthly Notification Charge Deducted</p>
+          <p style="margin:6px 0 0;color:#9a3412;font-size:13px">
+            A monthly notification service charge of <b>₹50.00</b> has been deducted from your account
+            ending <b>••••{_mask_account(account_number)}</b> for the month of notifications and alerts.
+          </p>
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid #e2e8f0">
+            <td style="padding:8px 0;color:#64748b">Notification Charge</td>
+            <td style="text-align:right;font-weight:600;color:#dc2626">–₹50.00</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b">Balance After Deduction</td>
+            <td style="text-align:right;font-weight:600">₹{balance_after:,.2f}</td>
+          </tr>
+        </table>
+        <p style="color:#475569;font-size:13px;margin-top:12px">
+          This charge covers SmartBank’s automated notification and alert services for the current month.
+          For queries, contact your branch or raise an enquiry in the SmartBank portal.
+        </p>
+      </div>
+      <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
+        This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+
+def send_profile_edit_charge_notice(
+    customer_name: str,
+    to_email: str,
+    account_number: str,
+    balance_after: float,
+):
+    """Sent when a ₹75 profile edit charge is applied."""
+    subject = "📝 Profile Update Service Charge — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+        <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Service Charge Notice</p>
+      </div>
+      <div style="padding:24px">
+        <p style="color:#0f172a;font-size:15px">Dear <b>{customer_name}</b>,</p>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:#9a3412;font-weight:600">📝 Profile Update Service Charge</p>
+          <p style="margin:6px 0 0;color:#9a3412;font-size:13px">
+            A service charge of <b>₹75.00</b> has been applied to your account
+            ending <b>••••{_mask_account(account_number)}</b> for processing your profile update request.
+          </p>
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr style="border-bottom:1px solid #e2e8f0">
+            <td style="padding:8px 0;color:#64748b">Service Charge</td>
+            <td style="text-align:right;font-weight:600;color:#dc2626">–₹75.00</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b">Balance After Deduction</td>
+            <td style="text-align:right;font-weight:600">₹{balance_after:,.2f}</td>
+          </tr>
+        </table>
+        <p style="color:#475569;font-size:13px;margin-top:12px">
+          This is a one-time service charge for your profile update request, which is now pending Manager approval.
+          If you did not request this change, please contact your branch immediately.
+        </p>
       </div>
       <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
         This is an automated message from SmartBank. Do not reply to this email.

@@ -1,7 +1,11 @@
+"use client"
+
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Home, List, Send, HelpCircle, AlertTriangle, Shield, CheckSquare, Activity, Settings, Users } from "lucide-react"
 
 export function Sidebar({ role }: { role: string }) {
+  const pathname = usePathname()
   let navItems: { name: string, href: string, icon: any }[] = []
 
   if (role === 'customer') {
@@ -41,18 +45,29 @@ export function Sidebar({ role }: { role: string }) {
   }
 
   return (
-    <div className="flex flex-col w-64 bg-primary text-white">
+    <div className="flex flex-col w-64 bg-primary text-white shadow-xl">
       <div className="flex items-center justify-center h-16 border-b border-primary-foreground/20">
-        <span className="text-xl font-bold tracking-wider">SmartBank</span>
+        <span className="text-xl font-extrabold tracking-widest uppercase">SmartBank</span>
       </div>
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        <nav className="px-2 py-4 space-y-2">
-          {navItems.map((item) => (
-            <Link key={item.name} href={item.href} className="flex items-center px-4 py-2 text-sm font-medium rounded-md hover:bg-white/10 transition">
-              <item.icon className="w-5 h-5 mr-3" />
-              {item.name}
-            </Link>
-          ))}
+        <nav className="px-3 py-6 space-y-1.5">
+          {navItems.map((item) => {
+            const isActive = pathname.startsWith(item.href)
+            return (
+              <Link 
+                key={item.name} 
+                href={item.href} 
+                className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                  isActive 
+                    ? 'bg-white/20 text-white font-bold shadow-sm backdrop-blur-sm' 
+                    : 'text-white/80 hover:bg-white/10 hover:text-white font-medium'
+                }`}
+              >
+                <item.icon className={`w-5 h-5 mr-3 ${isActive ? 'opacity-100 scale-110' : 'opacity-70'} transition-transform`} />
+                {item.name}
+              </Link>
+            )
+          })}
         </nav>
       </div>
     </div>

@@ -133,8 +133,25 @@ export default function ManagerEnquiriesPage() {
             <Card className="h-full flex flex-col min-h-[500px] border-0 ring-1 ring-gray-200 shadow-xl rounded-2xl overflow-hidden">
                <CardHeader className="bg-gray-50 border-b p-6">
                   <CardTitle className="text-lg flex items-center justify-between">
-                     Chat Thread
-                     <span className="text-xs font-normal text-gray-400">TICKET #{selectedEnquiry.enquiry_id.substring(0,8)}</span>
+                     <div className="flex flex-col">
+                        <span>Chat Thread</span>
+                        <span className="text-xs font-normal text-gray-400 mt-1">TICKET #{selectedEnquiry.enquiry_id.substring(0,8)}</span>
+                     </div>
+                     <button
+                        onClick={async () => {
+                           if (!confirm("End this chat? It will be archived and removed from your queue.")) return;
+                           try {
+                              await api.put(`/enquiries/${selectedEnquiry.enquiry_id}/close`);
+                              setSelectedEnquiry(null);
+                              loadEnquiries();
+                           } catch (err: any) {
+                              alert("Failed to end chat: " + (err.response?.data?.detail || err.message));
+                           }
+                        }}
+                        className="text-xs bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 px-3 py-1.5 rounded-lg border border-red-200 transition font-medium"
+                     >
+                        End Chat
+                     </button>
                   </CardTitle>
                </CardHeader>
                <CardContent className="flex-1 flex flex-col p-6 space-y-6 overflow-y-auto">

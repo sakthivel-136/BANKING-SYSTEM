@@ -36,3 +36,6 @@ frontend/.env.local
 .vscode/
 .idea/
 .gemini/
+
+# Misc
+credentials.txt

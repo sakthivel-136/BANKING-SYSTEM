@@ -39,7 +39,7 @@ def get_me(user: Dict[str, Any] = Depends(get_current_user)):
 
 # --- OTP Login Flow ---
 
-from models.schemas import LoginOTPRequest, LoginOTPVerify # type: ignore
+from models.schemas import LoginOTPRequest, LoginOTPVerify, StaffCreationRequest, StaffVerifySetup # type: ignore
 from services.email import send_email # type: ignore
 
 @router.post("/login-otp/request")
@@ -107,6 +107,17 @@ def verify_login_otp(payload: LoginOTPVerify):
         })
         if not session_res.session:
             raise HTTPException(status_code=400, detail="Invalid OTP code")
+
+        # Log the login activity
+        try:
+            supabase.table("audit_logs").insert({
+                "user_id": session_res.user.id,
+                "action": f"Login: {email}",
+                "entity": "Security"
+            }).execute()
+        except Exception as log_err:
+            print(f"DEBUG: Failed to log login: {log_err}")
+
         return {
             "status": "success",
             "session": {
@@ -118,7 +129,6 @@ def verify_login_otp(payload: LoginOTPVerify):
         raise
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
-from models.schemas import LoginOTPRequest, LoginOTPVerify, StaffCreationRequest, StaffVerifySetup # type: ignore
 
 @router.post("/staff/create-request")
 def request_staff_creation(payload: StaffCreationRequest, user: Dict[str, Any] = Depends(require_role(["md", "admin"]))):
@@ -172,3 +182,48 @@ def verify_staff_setup(payload: StaffVerifySetup):
         return {"status": "success", "message": "Staff account created. You can now login with your password."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# ── In-Person Customer Profile Edit ──
+
+# In-memory OTP store for profile edits: { customer_id: otp_code }
+_edit_otps: dict = {}
+
+@router.post("/customer-edit-otp")
+def send_customer_edit_otp(payload: dict, user: Dict[str, Any] = Depends(require_role(["manager", "admin"]))):
+    """Manager sends OTP to customer's email to verify in-person identity."""
+    customer_id = payload.get("customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="customer_id required")
+    
+    res = supabase.table("customer_profile").select("email, full_name").eq("customer_id", customer_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    customer = res.data[0]
+    otp = str(random.randint(100000, 999999))
+    
+    # Store OTP in memory (keyed by customer_id)
+    _edit_otps[customer_id] = otp
+    
+    send_email(
+        customer["email"],
+        "SmartBank — Profile Update Verification",
+        f"""
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+          <div style="background:#1E3A8A;padding:20px 24px">
+            <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+            <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Profile Update Verification</p>
+          </div>
+          <div style="padding:24px">
+            <p style="color:#0f172a;font-size:15px">Dear {customer['full_name']},</p>
+            <p style="color:#475569;font-size:14px">A manager has initiated an in-person profile update request. Your verification OTP is:</p>
+            <div style="background:#f0f9ff;border:2px solid #bae6fd;border-radius:8px;padding:16px;margin:16px 0;text-align:center">
+              <span style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#0369a1">{otp}</span>
+            </div>
+            <p style="color:#64748b;font-size:13px">Please provide this OTP to the manager. It expires in 10 minutes.</p>
+          </div>
+        </div>
+        """
+    )
+    print(f"DEBUG: Profile-edit OTP for customer {customer_id} is {otp}")
+    return {"message": "OTP sent to customer's registered email"}

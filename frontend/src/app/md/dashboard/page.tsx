@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { DashboardCard } from "@/components/ui/DashboardCard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { PieChart, BarChart, TrendingUp, HandCoins } from "lucide-react"
+import { PieChart, BarChart, TrendingUp, HandCoins, Download } from "lucide-react"
 import api from "@/services/api"
 
 export default function MDDashboard() {
@@ -46,6 +46,23 @@ export default function MDDashboard() {
     }
   }
 
+  const handleDownloadReport = async () => {
+    try {
+      const res = await api.get("/reports/monthly-download", { responseType: "blob" })
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const link = document.createElement("a")
+      link.href = url
+      const now = new Date()
+      link.setAttribute("download", `smartbank_report_${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      alert("Failed to download report: " + (err.response?.data?.detail || err.message))
+    }
+  }
+
   if (!report) return <DashboardLayout role="md"><div className="p-8">Loading analytics...</div></DashboardLayout>
 
   return (
@@ -54,12 +71,20 @@ export default function MDDashboard() {
         <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
            <TrendingUp className="text-primary w-8 h-8"/> Overall Analytics
         </h2>
-        <button 
-          onClick={() => setShowManagerModal(true)}
-          className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary/90 transition shadow-sm font-medium"
-        >
-          <PieChart className="w-4 h-4" /> Add New Manager
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleDownloadReport}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-emerald-700 transition shadow-sm font-medium"
+          >
+            <Download className="w-4 h-4" /> Download Monthly Report
+          </button>
+          <button 
+            onClick={() => setShowManagerModal(true)}
+            className="bg-primary text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary/90 transition shadow-sm font-medium"
+          >
+            <PieChart className="w-4 h-4" /> Add New Manager
+          </button>
+        </div>
       </div>
 
       {showManagerModal && (

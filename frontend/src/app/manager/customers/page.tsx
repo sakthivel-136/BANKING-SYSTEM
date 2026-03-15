@@ -3,14 +3,16 @@
 import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Plus, Users, Search, Loader2 } from "lucide-react"
+import { Plus, Users, Search, Loader2, Pencil } from "lucide-react"
 import api from "@/services/api"
 import { format } from "date-fns"
+import { ManagerCustomerEditModal } from "@/components/ManagerCustomerEditModal"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<any | null>(null)
   const [step, setStep] = useState<"form" | "otp">("form")
   const [searchTerm, setSearchTerm] = useState("")
   const [filteredCustomers, setFilteredCustomers] = useState<any[]>([])
@@ -173,6 +175,7 @@ export default function CustomersPage() {
                     <th className="px-6 py-3 font-semibold">DOB</th>
                     <th className="px-6 py-3 font-semibold">Location</th>
                     <th className="px-6 py-3 font-semibold">Registered</th>
+                    <th className="px-6 py-3 font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -187,11 +190,19 @@ export default function CustomersPage() {
                       <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
                         {c.created_at ? format(new Date(c.created_at), "MMM d, yyyy") : "—"}
                       </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => setEditingCustomer(c)}
+                          className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition font-medium"
+                        >
+                          <Pencil className="w-3 h-3" /> Edit
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {filteredCustomers.length === 0 && (
                      <tr>
-                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">No customers found</td>
+                        <td colSpan={8} className="px-6 py-8 text-center text-gray-500">No customers found</td>
                      </tr>
                   )}
                 </tbody>
@@ -200,6 +211,15 @@ export default function CustomersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Customer Modal (In-Person Profile Update) */}
+      {editingCustomer && (
+        <ManagerCustomerEditModal
+          customer={editingCustomer}
+          onClose={() => setEditingCustomer(null)}
+          onSuccess={loadCustomers}
+        />
+      )}
 
       {/* Add Customer Modal */}
       {showModal && (

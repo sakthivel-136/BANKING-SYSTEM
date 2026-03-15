@@ -8,9 +8,10 @@ import { FileText, Send, Loader2, AlertCircle, Clock, CheckCircle2 } from "lucid
 import api from "@/services/api"
 
 export default function RequestsPage() {
+  const [userProfile, setUserProfile] = useState<any>(null)
   const [accounts, setAccounts] = useState<any[]>([])
   const [selectedAccount, setSelectedAccount] = useState("")
-  const [actionType, setActionType] = useState("unfreeze")
+  const [actionType, setActionType] = useState("")
   const [duration, setDuration] = useState("3")
   const [reason, setReason] = useState("")
   const [loading, setLoading] = useState(true)
@@ -21,13 +22,15 @@ export default function RequestsPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [accRes, reqRes] = await Promise.all([
+        const [accRes, meRes] = await Promise.all([
           api.get("/accounts/mine"),
-          api.get("/accounts/activity-pending") // This might return global pending, usually we'd filter for me. 
-          // For simplicity, let's just fetch accounts and maybe add a separate endpoint for past requests if needed.
+          api.get("/auth/me")
         ])
         setAccounts(accRes.data)
-        if (accRes.data.length > 0) setSelectedAccount(accRes.data[0].account_id)
+        setUserProfile(meRes.data.profile)
+        if (accRes.data.length > 0) {
+          setSelectedAccount(accRes.data[0].account_id)
+        }
       } catch (err) {
         console.error(err)
       } finally {
@@ -37,14 +40,38 @@ export default function RequestsPage() {
     fetchData()
   }, [])
 
+  const selectedAccData = accounts.find(a => a.account_id === selectedAccount)
+
+  // Determine available actions based on selected account status
+  const getAvailableActions = () => {
+    if (!selectedAccData) return []
+    const status = selectedAccData.status
+    if (status === "frozen") return [{ value: "unfreeze", label: "Unfreeze Account" }]
+    if (status === "closed") return [{ value: "unblock", label: "Unblock Account" }]
+    if (status === "active") return [{ value: "deactivate", label: "Deactivate Account" }]
+    return []
+  }
+
+  const availableActions = getAvailableActions()
+
+  // Auto-set action type when account changes
+  useEffect(() => {
+    if (availableActions.length > 0) {
+      setActionType(availableActions[0].value)
+    } else {
+      setActionType("")
+    }
+  }, [selectedAccount, accounts])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!actionType) return
     setProcessing(true)
     try {
       await api.post("/accounts/activity-request", {
         account_id: selectedAccount,
         action_type: actionType,
-        duration_months: parseInt(duration),
+        duration_months: actionType === "deactivate" ? parseInt(duration) : null,
         reason: reason
       })
       setSuccess(true)
@@ -64,12 +91,16 @@ export default function RequestsPage() {
                   <CheckCircle2 className="w-10 h-10" />
               </div>
               <h1 className="text-3xl font-bold text-gray-900 mb-4">Request Received</h1>
-              <p className="text-gray-600 text-lg mb-8">Your account request has been submitted successfully. A manager will review your request and process it within 24-48 hours.</p>
+              <p className="text-gray-600 text-lg mb-8">
+                {actionType === "deactivate"
+                  ? "Your deactivation request has been submitted. It will be reviewed by a Manager and then approved by the MD."
+                  : "Your account request has been submitted successfully. A manager will review your request and process it within 24-48 hours."}
+              </p>
               <button 
                 onClick={() => window.location.reload()}
                 className="bg-primary text-white px-8 py-3 rounded-xl font-bold hover:bg-primary/90 transition shadow-lg shadow-primary/20"
               >
-                  Submit Another Request
+                Submit Another Request
               </button>
           </div>
       )
@@ -77,19 +108,48 @@ export default function RequestsPage() {
 
   return (
     <>
-
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <FileText className="text-blue-600 w-8 h-8" />
             Account Requests
         </h1>
-        <p className="text-gray-500 mt-2">Request special actions like unfreezing, unblocking, or temporary deactivation.</p>
+        <p className="text-gray-500 mt-2">Request account actions based on your current account status.</p>
       </div>
 
       <div className="grid md:grid-cols-5 gap-8">
         <div className="md:col-span-3">
             <Card className="border-gray-200 shadow-sm">
                 <CardContent className="p-8">
+                    {/* Customer Info Header */}
+                    {selectedAccData && (
+                      <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100 grid grid-cols-2 gap-4">
+                        <div className="col-span-2 pb-2 border-b border-gray-200/50 flex items-center justify-between">
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Customer Name</p>
+                            <p className="text-sm font-bold text-gray-800">{userProfile?.full_name || "Loading..."}</p>
+                          </div>
+                          <div className="text-right">
+                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Customer ID</p>
+                             <p className="text-sm font-mono font-medium text-gray-700">{userProfile?.customer_number || selectedAccData.customer_id}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Account Number</p>
+                          <p className="text-sm font-mono font-medium text-gray-700 underline underline-offset-4 decoration-primary/20">{selectedAccData.account_number}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Current Status</p>
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight ${
+                            selectedAccData.status === 'active' ? 'bg-green-100 text-green-700' : 
+                            selectedAccData.status === 'frozen' ? 'bg-orange-100 text-orange-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {selectedAccData.status === 'closed' ? 'blocked' : selectedAccData.status}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-4">
                             <div>
@@ -99,70 +159,97 @@ export default function RequestsPage() {
                                     value={selectedAccount}
                                     onChange={(e) => setSelectedAccount(e.target.value)}
                                 >
+                                    <option value="" disabled>Select an account to proceed</option>
                                     {accounts.map(acc => (
                                         <option key={acc.account_id} value={acc.account_id}>
-                                            {acc.account_number} ({acc.account_type}) - ₹{acc.balance.toLocaleString()}
+                                            {acc.account_number} ({acc.account_type}) - Balance ₹{acc.balance.toLocaleString()} — Status: {acc.status === 'closed' ? 'Blocked' : acc.status.charAt(0).toUpperCase() + acc.status.slice(1)}
                                         </option>
                                     ))}
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Action Type</label>
-                                    <select 
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                                        value={actionType}
-                                        onChange={(e) => setActionType(e.target.value)}
-                                    >
-                                        <option value="unfreeze">Unfreeze Account</option>
-                                        <option value="unblock">Unblock Account</option>
-                                        <option value="deactivate">Deactivate (Temp)</option>
-                                    </select>
-                                </div>
-                                {actionType === "deactivate" && (
+                            {availableActions.length === 0 && selectedAccData && (
+                              <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-500 text-center">
+                                No actions available for this account status ({selectedAccData.status === 'closed' ? 'blocked' : selectedAccData.status}).
+                              </div>
+                            )}
+
+                            {availableActions.length > 0 && (
+                              <>
+                                <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Duration</label>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Action Type</label>
                                         <select 
                                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                                            value={duration}
-                                            onChange={(e) => setDuration(e.target.value)}
+                                            value={actionType}
+                                            onChange={(e) => setActionType(e.target.value)}
                                         >
-                                            <option value="3">3 Months</option>
-                                            <option value="6">6 Months</option>
-                                            <option value="999">Lifelong Deactivation</option>
+                                            {availableActions.map(act => (
+                                              <option key={act.value} value={act.value}>{act.label}</option>
+                                            ))}
                                         </select>
                                     </div>
-                                )}
+                                    {actionType === "deactivate" && (
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Duration</label>
+                                            <select 
+                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                                                value={duration}
+                                                onChange={(e) => setDuration(e.target.value)}
+                                            >
+                                                <option value="3">3 Months</option>
+                                                <option value="6">6 Months</option>
+                                                <option value="999">Lifelong Deactivation</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
 
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">Reason for Request</label>
-                                <textarea 
-                                    required
-                                    rows={4}
-                                    placeholder="Please provide a detailed reason for this request..."
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"
-                                    value={reason}
-                                    onChange={(e) => setReason(e.target.value)}
-                                />
-                            </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Reason for Request</label>
+                                    <textarea 
+                                        required
+                                        rows={4}
+                                        placeholder="Please provide a detailed reason for this request..."
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"
+                                        value={reason}
+                                        onChange={(e) => setReason(e.target.value)}
+                                    />
+                                </div>
+                              </>
+                            )}
                         </div>
 
-                        <button 
-                            disabled={processing}
-                            type="submit" 
-                            className="w-full bg-primary text-white py-4 rounded-xl font-bold text-lg hover:bg-primary/90 transition shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
-                        >
-                            {processing ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Send className="w-5 h-5" /> Submit Request</>}
-                        </button>
+                        {availableActions.length > 0 && (
+                          <button 
+                              disabled={processing || !selectedAccount || !actionType}
+                              type="submit" 
+                              className="w-full bg-primary text-white py-4 rounded-xl font-bold text-lg hover:bg-primary/90 transition shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                              {processing ? <Loader2 className="w-6 h-6 animate-spin" /> : <><Send className="w-5 h-5" /> Submit Request</>}
+                          </button>
+                        )}
                     </form>
                 </CardContent>
             </Card>
         </div>
 
         <div className="md:col-span-2 space-y-6">
+            {actionType === "deactivate" && (
+              <Card className="bg-red-50/50 border-red-100">
+                <CardContent className="p-6">
+                    <h3 className="font-bold text-red-900 flex items-center gap-2 mb-3">
+                        <AlertCircle className="w-5 h-5 text-red-600" />
+                        Deactivation Warning
+                    </h3>
+                    <p className="text-sm text-red-800 leading-relaxed">
+                        Deactivation requests require <strong>Manager review</strong> and then <strong>MD approval</strong>. 
+                        Lifelong deactivation will permanently delete your account history, transaction records, and block all future access.
+                    </p>
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="bg-blue-50/50 border-blue-100">
                 <CardContent className="p-6">
                     <h3 className="font-bold text-blue-900 flex items-center gap-2 mb-3">
@@ -183,7 +270,7 @@ export default function RequestsPage() {
                 <ol className="space-y-4">
                     <li className="flex gap-3">
                         <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">1</span>
-                        <p className="text-sm text-gray-600 mt-0.5">Fill out the request form with your details.</p>
+                        <p className="text-sm text-gray-600 mt-0.5">Fill out the request form with your details and reason.</p>
                     </li>
                     <li className="flex gap-3">
                         <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">2</span>
@@ -191,7 +278,11 @@ export default function RequestsPage() {
                     </li>
                     <li className="flex gap-3">
                         <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">3</span>
-                        <p className="text-sm text-gray-600 mt-0.5">Approval/Rejection is applied to your account.</p>
+                        <p className="text-sm text-gray-600 mt-0.5">
+                          {actionType === "deactivate"
+                            ? "MD provides final approval for deactivation. The account is then deactivated."
+                            : "Approval/Rejection is applied to your account."}
+                        </p>
                     </li>
                 </ol>
             </div>

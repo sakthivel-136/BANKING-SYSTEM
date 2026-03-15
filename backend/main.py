@@ -1,9 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
 from routers import auth, customers, accounts, transactions, complaints, enquiries, notifications, reports, workflows, executions
 
-app = FastAPI(title="SmartBank Automation System", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: start APScheduler for monthly charges
+    try:
+        from services.scheduler import start_scheduler  # type: ignore
+        _scheduler = start_scheduler()
+        print("✅ SmartBank scheduler initialized.")
+    except Exception as e:
+        print(f"⚠️ WARNING: Scheduler failed to start: {e}")
+    yield
+    # Shutdown (nothing to clean up yet)
+
+
+app = FastAPI(title="SmartBank Automation System", version="1.0.0", lifespan=lifespan)
 
 # CORS config
 app.add_middleware(

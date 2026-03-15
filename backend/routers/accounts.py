@@ -3,6 +3,13 @@ from typing import Dict, Any, List # type: ignore
 from database import supabase # type: ignore
 from models.schemas import AccountCreate # type: ignore
 from routers.auth import get_current_user # type: ignore
+from services.email import ( # type: ignore
+    send_account_frozen_notice,
+    send_unfreeze_approved,
+    send_account_blocked_notice,
+    send_account_unblocked_notice,
+    send_account_deactivated_notice,
+)
 import httpx # type: ignore
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -26,63 +33,470 @@ def get_all_accounts(user: Dict[str, Any] = Depends(get_current_user)):
     res = supabase.table("accounts").select("*, customer_profile:customer_id(full_name)").execute()
     return res.data
 
+# ── Dashboard Stats (live data) ─────────────────────────────────────
+@router.get("/dashboard-stats")
+def get_dashboard_stats(user: Dict[str, Any] = Depends(get_current_user)):
+    role = user.get("role")
+    if role not in ["manager", "md", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    # Fetch all accounts
+    acc_res = supabase.table("accounts").select("account_type, status, balance").execute()
+    accounts = acc_res.data or []
+    
+    total_accounts = len(accounts)
+    active_accounts = sum(1 for a in accounts if a["status"] == "active")
+    frozen_accounts = sum(1 for a in accounts if a["status"] == "frozen")
+    blocked_accounts = sum(1 for a in accounts if a["status"] == "closed")
+    
+    savings_accounts = sum(1 for a in accounts if (a.get("account_type") or "").lower() == "savings")
+    investment_accounts = sum(1 for a in accounts if (a.get("account_type") or "").lower() == "investment")
+    current_accounts = sum(1 for a in accounts if (a.get("account_type") or "").lower() == "current")
+    
+    total_balance = sum(a.get("balance", 0) for a in accounts)
+    low_balance_count = sum(1 for a in accounts if a.get("balance", 0) < 1000 and a["status"] == "active")
+    
+    # Pending transfer approvals
+    transfer_res = supabase.table("transfer_requests").select("request_id").eq("status", "pending_approval").execute()
+    pending_transfers = len(transfer_res.data) if transfer_res.data else 0
+    
+    # Pending account activity requests
+    activity_res1 = supabase.table("account_activity_requests").select("request_id").eq("status", "pending_approval").execute()
+    pending_activity = len(activity_res1.data) if activity_res1.data else 0
+    
+    # Pending profile update requests
+    profile_res = supabase.table("profile_update_requests").select("request_id").eq("status", "pending_approval").execute()
+    pending_profiles = len(profile_res.data) if profile_res.data else 0
+    
+    # Total customers
+    cust_res = supabase.table("customer_profile").select("customer_id").execute()
+    total_customers = len(cust_res.data) if cust_res.data else 0
+    
+    return {
+        "total_accounts": total_accounts,
+        "active_accounts": active_accounts,
+        "frozen_accounts": frozen_accounts,
+        "blocked_accounts": blocked_accounts,
+        "savings_accounts": savings_accounts,
+        "investment_accounts": investment_accounts,
+        "current_accounts": current_accounts,
+        "total_balance": total_balance,
+        "total_customers": total_customers,
+        "pending_transfers": pending_transfers,
+        "pending_activity_requests": pending_activity,
+        "pending_profile_updates": pending_profiles,
+        "pending_approvals": pending_transfers + pending_activity + pending_profiles,
+        "low_balance_count": low_balance_count
+    }
+
 @router.put("/{account_id}/status")
 def update_status(account_id: str, status: str, user: Dict[str, Any] = Depends(get_current_user)):
-    if user.get("role") not in ["manager", "md"]:
-        raise HTTPException(status_code=403, detail="Forbidden")
+    print(f"DEBUG update_status: user={user}")
+    role = user.get("role")
+    if not role or (isinstance(role, str) and role not in ["manager", "md", "admin"]) or (isinstance(role, list) and all(r not in ["manager", "md", "admin"] for r in role)):
+        raise HTTPException(status_code=403, detail=f"Forbidden: role is {role}")
+    
+    # Get account and customer profile for email
+    acc_res = supabase.table("accounts").select("*, customer_profile:customer_id(full_name, email)").eq("account_id", account_id).execute()
+    if not acc_res.data:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    acc = acc_res.data[0]
+    old_status = acc.get("status", "active")
+    profile = acc.get("customer_profile", {})
     
     # Update account status
     res = supabase.table("accounts").update({"status": status}).eq("account_id", account_id).execute()
+    if not res.data:
+         raise HTTPException(status_code=500, detail="Failed to update status")
+
+    # Send email notification to the CUSTOMER (not the manager)
+    customer_name = profile.get("full_name", "Customer")
+    customer_email = profile.get("email")
+    account_number = acc["account_number"]
     
+    if customer_email:
+        try:
+            if status == "frozen":
+                send_account_frozen_notice(
+                    customer_name=customer_name,
+                    to_email=customer_email,
+                    account_number=account_number,
+                    reason="Account frozen by Manager"
+                )
+            elif status == "closed":
+                send_account_blocked_notice(
+                    customer_name=customer_name,
+                    to_email=customer_email,
+                    account_number=account_number,
+                    reason="Account blocked by Manager"
+                )
+            elif status == "active" and old_status == "frozen":
+                send_unfreeze_approved(
+                    customer_name=customer_name,
+                    to_email=customer_email,
+                    account_number=account_number
+                )
+            elif status == "active" and old_status == "closed":
+                send_account_unblocked_notice(
+                    customer_name=customer_name,
+                    to_email=customer_email,
+                    account_number=account_number
+                )
+            elif status == "active":
+                # Generic unfreeze/unblock for unknown previous state
+                send_unfreeze_approved(
+                    customer_name=customer_name,
+                    to_email=customer_email,
+                    account_number=account_number
+                )
+        except Exception as e:
+            print(f"Email failure: {e}")
+
     # Audit log
     supabase.table("audit_logs").insert({
         "user_id": user["id"],
-        "action": f"Changed status to {status}",
+        "action": f"Changed status from {old_status} to {status}",
         "entity": f"account:{account_id}"
     }).execute()
     
     return res.data[0]
+
+# ── Customer Activity Requests ───────────────────────────────────────
 @router.post("/activity-request")
 def request_activity(payload: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
     # Payload: account_id, action_type (unblock, unfreeze, deactivate), duration_months, reason
+    account_id = payload.get("account_id")
+    if not account_id:
+        raise HTTPException(status_code=400, detail="Account selection is required")
+
+    action_type = payload.get("action_type")
+    
+    # Set initial status based on action type
+    # Deactivation goes through manager -> MD chain
+    initial_status = "pending_approval"
+    
     data = {
-        "account_id": payload["account_id"],
-        "action_type": payload["action_type"],
+        "account_id": account_id,
+        "action_type": action_type,
         "duration_months": payload.get("duration_months"),
         "reason": payload.get("reason"),
-        "status": "pending_approval"
+        "status": initial_status
     }
     # Validate ownership
-    acc_res = supabase.table("accounts").select("customer_id").eq("account_id", payload["account_id"]).execute()
+    acc_res = supabase.table("accounts").select("customer_id").eq("account_id", account_id).execute()
     if not acc_res.data or acc_res.data[0]["customer_id"] != user["id"]:
          raise HTTPException(status_code=403, detail="Not authorized")
          
     res = supabase.table("account_activity_requests").insert(data).execute()
     return res.data[0]
 
+# ── Manager approves unfreeze/unblock OR forwards deactivate to MD ───
 @router.post("/activity-approve/{request_id}")
 def approve_activity(request_id: str, user: Dict[str, Any] = Depends(get_current_user)):
     if user.get("role") not in ["manager", "md"]:
         raise HTTPException(status_code=403, detail="Forbidden")
         
-    req_res = supabase.table("account_activity_requests").select("*").eq("request_id", request_id).execute()
+    req_res = supabase.table("account_activity_requests").select("*, accounts(*, customer_profile:customer_id(full_name, email))").eq("request_id", request_id).execute()
+    if not req_res.data:
+        raise HTTPException(status_code=404, detail="Request not found")
+    req = req_res.data[0]
+    acc = req.get("accounts", {})
+    profile = acc.get("customer_profile", {})
+    
+    # If deactivation → forward to MD, don't directly approve
+    if req["action_type"] == "deactivate":
+        supabase.table("account_activity_requests").update({
+            "status": "pending_md",
+            "manager_id": user["id"]
+        }).eq("request_id", request_id).execute()
+        return {"message": "Deactivation request forwarded to MD for final approval."}
+    
+    # For unfreeze/unblock → directly approve
+    new_status = 'active'
+    
+    res = supabase.table("accounts").update({"status": new_status}).eq("account_id", req["account_id"]).execute()
+    supabase.table("account_activity_requests").update({"status": "approved"}).eq("request_id", request_id).execute()
+    
+    # Send Notification to the customer
+    customer_name = profile.get("full_name", "Customer")
+    customer_email = profile.get("email")
+    account_number = acc.get("account_number", "")
+    
+    if customer_email:
+        try:
+            if req["action_type"] == "unfreeze":
+                send_unfreeze_approved(
+                    customer_name=customer_name,
+                    to_email=customer_email,
+                    account_number=account_number
+                )
+            elif req["action_type"] == "unblock":
+                send_account_unblocked_notice(
+                    customer_name=customer_name,
+                    to_email=customer_email,
+                    account_number=account_number
+                )
+        except Exception as e:
+            print(f"Email failure: {e}")
+    
+    return {"message": f"Account {req['action_type']}d successfully!"}
+
+# ── MD approves deactivation ─────────────────────────────────────────
+@router.post("/activity-md-approve/{request_id}")
+def md_approve_deactivation(request_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") not in ["md"]:
+        raise HTTPException(status_code=403, detail="Forbidden — MD only")
+    
+    req_res = supabase.table("account_activity_requests").select("*, accounts(*, customer_profile:customer_id(full_name, email))").eq("request_id", request_id).execute()
     if not req_res.data:
         raise HTTPException(status_code=404, detail="Request not found")
     req = req_res.data[0]
     
-    # Apply change
-    new_status = 'active'
-    if req["action_type"] == 'deactivate':
-        new_status = 'closed' # or blocked
+    if req.get("status") != "pending_md":
+        raise HTTPException(status_code=400, detail="This request is not pending MD approval")
     
-    supabase.table("accounts").update({"status": new_status}).eq("account_id", req["account_id"]).execute()
+    acc = req.get("accounts", {})
+    profile = acc.get("customer_profile", {})
+    customer_name = profile.get("full_name", "Customer")
+    customer_email = profile.get("email")
+    account_number = acc.get("account_number", "")
+    duration_months = req.get("duration_months")
+    
+    if duration_months == 999:
+        # Lifelong deactivation — permanently close and delete history
+        duration_label = "Permanent (Lifelong)"
+        
+        # Delete transactions for this account
+        supabase.table("transactions").delete().eq("account_id", req["account_id"]).execute()
+        
+        # Close the account permanently
+        supabase.table("accounts").update({"status": "deactivated", "balance": 0}).eq("account_id", req["account_id"]).execute()
+        
+        # Delete complaints and enquiries for this customer
+        customer_id = acc.get("customer_id")
+        if customer_id:
+            supabase.table("complaints").delete().eq("customer_id", customer_id).execute()
+            supabase.table("enquiries").delete().eq("customer_id", customer_id).execute()
+    else:
+        # Temporary deactivation
+        duration_label = f"{duration_months} Months"
+        supabase.table("accounts").update({"status": "deactivated"}).eq("account_id", req["account_id"]).execute()
+    
+    # Mark request as approved
     supabase.table("account_activity_requests").update({"status": "approved"}).eq("request_id", request_id).execute()
     
-    return {"message": f"Account {req['action_type']}d successfully!"}
+    # Send email to customer
+    if customer_email:
+        try:
+            send_account_deactivated_notice(
+                customer_name=customer_name,
+                to_email=customer_email,
+                account_number=account_number,
+                duration=duration_label
+            )
+        except Exception as e:
+            print(f"Email failure: {e}")
+    
+    return {"message": f"Account deactivated successfully. Duration: {duration_label}"}
 
+# ── MD reject deactivation ───────────────────────────────────────────
+@router.post("/activity-md-reject/{request_id}")
+def md_reject_deactivation(request_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") not in ["md"]:
+        raise HTTPException(status_code=403, detail="Forbidden — MD only")
+    
+    req_res = supabase.table("account_activity_requests").select("request_id, status").eq("request_id", request_id).execute()
+    if not req_res.data:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    if req_res.data[0].get("status") != "pending_md":
+        raise HTTPException(status_code=400, detail="This request is not pending MD approval")
+    
+    supabase.table("account_activity_requests").update({"status": "rejected"}).eq("request_id", request_id).execute()
+    return {"message": "Deactivation request rejected."}
+
+# ── Pending lists ─────────────────────────────────────────────────────
 @router.get("/activity-pending")
 def list_pending_activities(user: Dict[str, Any] = Depends(get_current_user)):
     if user.get("role") not in ["manager", "md"]:
         raise HTTPException(status_code=403, detail="Forbidden")
-    res = supabase.table("account_activity_requests").select("*, accounts(account_number, customer_profile(full_name))").eq("status", "pending_approval").execute()
-    return res.data
+    # Manager sees pending_approval (unfreeze/unblock) + pending_manager (deactivation to review)
+    res1 = supabase.table("account_activity_requests").select("*, accounts(account_number, customer_profile(full_name))").eq("status", "pending_approval").execute()
+    return res1.data or []
+
+@router.get("/activity-pending-md")
+def list_pending_md_activities(user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") not in ["md"]:
+        raise HTTPException(status_code=403, detail="Forbidden — MD only")
+    res = supabase.table("account_activity_requests").select("*, accounts(account_number, account_type, balance, customer_profile(full_name, email))").eq("status", "pending_md").execute()
+    return res.data or []
+
+# ── Low Balance Alerts ─────────────────────────────────────────────────
+
+@router.get("/low-balance-alerts")
+def get_low_balance_alerts(user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") not in ["manager", "md", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # ── Step 1: Fetch all account configs (thresholds) ──
+    configs_res = supabase.table("account_configs").select("account_type, min_balance_threshold").execute()
+    # Build a dict: "Savings" -> 1000, "Current" -> 5000, etc.
+    config_map: dict = {}
+    for c in (configs_res.data or []):
+        config_map[c["account_type"].lower()] = float(c["min_balance_threshold"])
+    default_threshold = 1000.0
+
+    # ── Step 2: Fetch all active accounts with customer profile ──
+    acc_res = supabase.table("accounts").select(
+        "account_id, account_number, account_type, balance, status, customer_profile:customer_id(full_name, email)"
+    ).eq("status", "active").execute()
+    accounts = acc_res.data or []
+
+    # ── Step 3: Fetch existing DB alert records so we can carry escalation state ──
+    db_alerts: dict = {}
+    try:
+        da_res = supabase.table("low_balance_alerts").select(
+            "alert_id, account_id, status, escalation_message, manager_note, created_at"
+        ).in_("status", ["open", "escalated"]).execute()
+        for a in (da_res.data or []):
+            db_alerts[str(a["account_id"])] = a
+    except Exception:
+        pass  # Table may not exist yet — that's fine
+
+    # ── Step 4: Build alert list from accounts below threshold ──
+    alerts = []
+    for acc in accounts:
+        acc_type = (acc.get("account_type") or "savings").lower()
+        threshold = config_map.get(acc_type, default_threshold)
+        balance = float(acc.get("balance") or 0)
+        if balance < threshold:
+            acc_id = str(acc["account_id"])
+            db = db_alerts.get(acc_id, {})
+            alerts.append({
+                "alert_id": db.get("alert_id", acc_id),   # use DB alert_id if exists, else use account_id as key
+                "account_id": acc_id,
+                "balance": balance,
+                "threshold": threshold,
+                "status": db.get("status", "open"),
+                "escalation_message": db.get("escalation_message"),
+                "manager_note": db.get("manager_note"),
+                "created_at": db.get("created_at", ""),
+                "accounts": {
+                    "account_number": acc["account_number"],
+                    "account_type": acc["account_type"],
+                    "balance": balance,
+                    "status": acc["status"],
+                    "customer_profile": acc.get("customer_profile")
+                }
+            })
+
+    return alerts
+
+@router.post("/alert-resolve/{alert_id}")
+def resolve_alert(alert_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") not in ["manager", "md", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        supabase.table("low_balance_alerts").update({"status": "resolved"}).eq("alert_id", alert_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": "Alert resolved."}
+
+@router.post("/alert-escalate/{alert_id}")
+def escalate_alert(alert_id: str, payload: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    if user.get("role") not in ["manager", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden — Managers only")
+    message = payload.get("message", "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Escalation message is required")
+    try:
+        supabase.table("low_balance_alerts").update({
+            "status": "escalated",
+            "escalation_message": message,
+            "manager_note": f"Escalated by manager ID: {user['id']}"
+        }).eq("alert_id", alert_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": "Alert escalated to MD."}
+
+@router.post("/alert-freeze/{alert_id}")
+def freeze_from_alert(alert_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    """Manager freezes the account directly from an alert."""
+    if user.get("role") not in ["manager", "md", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        alert_res = supabase.table("low_balance_alerts").select("account_id").eq("alert_id", alert_id).execute()
+        if not alert_res.data:
+            raise HTTPException(status_code=404, detail="Alert not found")
+        account_id = alert_res.data[0]["account_id"]
+
+        # Fetch account + customer profile for email
+        acc_res = supabase.table("accounts").select("*, customer_profile:customer_id(full_name, email)").eq("account_id", account_id).execute()
+        if not acc_res.data:
+            raise HTTPException(status_code=404, detail="Account not found")
+        acc = acc_res.data[0]
+        profile = acc.get("customer_profile", {})
+
+        supabase.table("accounts").update({"status": "frozen"}).eq("account_id", account_id).execute()
+        supabase.table("low_balance_alerts").update({"status": "resolved"}).eq("alert_id", alert_id).execute()
+
+        if profile.get("email"):
+            try:
+                send_account_frozen_notice(
+                    customer_name=profile.get("full_name", "Customer"),
+                    to_email=profile["email"],
+                    account_number=acc["account_number"],
+                    reason="Low balance — account frozen by Manager"
+                )
+            except Exception as e:
+                print(f"Email failure: {e}")
+
+        return {"message": "Account frozen and alert resolved."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/escalated-alerts")
+def get_escalated_alerts(user: Dict[str, Any] = Depends(get_current_user)):
+    """MD-only: view all alerts escalated by managers."""
+    if user.get("role") not in ["md"]:
+        raise HTTPException(status_code=403, detail="Forbidden — MD only")
+    try:
+        res = supabase.table("low_balance_alerts").select(
+            "*, accounts(account_number, account_type, balance, customer_profile:customer_id(full_name, email))"
+        ).eq("status", "escalated").order("created_at", desc=True).execute()
+        return res.data or []
+    except Exception as e:
+        print(f"DEBUG: escalated alerts fetch failed: {e}")
+        return []
+
+
+# ── Manual trigger for monthly charges (Manager / Admin) ─────────────────────
+
+@router.post("/trigger-monthly-charges")
+def trigger_monthly_charges(user: Dict[str, Any] = Depends(get_current_user)):
+    """Allows a manager/admin to manually trigger the monthly bank charges
+    (minimum balance fine + ₹50 notification charge) for all active accounts."""
+    if user.get("role") not in ["manager", "admin", "md"]:
+        raise HTTPException(status_code=403, detail="Forbidden — Managers only")
+    try:
+        from services.banking import apply_monthly_charges  # type: ignore
+        result = apply_monthly_charges(dry_run=False)
+        return {"message": "Monthly charges applied successfully!", "summary": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Monthly charges failed: {str(e)}")
+
+
+@router.post("/preview-monthly-charges")
+def preview_monthly_charges(user: Dict[str, Any] = Depends(get_current_user)):
+    """Dry-run: shows what charges would be applied without actually deducting."""
+    if user.get("role") not in ["manager", "admin", "md"]:
+        raise HTTPException(status_code=403, detail="Forbidden — Managers only")
+    try:
+        from services.banking import apply_monthly_charges  # type: ignore
+        result = apply_monthly_charges(dry_run=True)
+        return {"message": "Preview only — no charges were applied.", "preview": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Preview failed: {str(e)}")

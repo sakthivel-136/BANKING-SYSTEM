@@ -1,6 +1,7 @@
 import React from "react"
 import { TopBar } from "./TopBar"
 import { Sidebar } from "./Sidebar"
+import { Footer } from "./Footer"
 
 export function DashboardLayout({ children, role }: { children: React.ReactNode, role: string }) {
   return (
@@ -11,6 +12,7 @@ export function DashboardLayout({ children, role }: { children: React.ReactNode,
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-background p-6">
           {children}
         </main>
+        <Footer />
       </div>
     </div>
   )

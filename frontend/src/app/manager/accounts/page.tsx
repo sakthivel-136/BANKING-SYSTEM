@@ -8,11 +8,19 @@ import api from "@/services/api"
 export default function ManagerAccounts() {
   const [accounts, setAccounts] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [filterType, setFilterType] = useState("all")
+  const [filterStatus, setFilterStatus] = useState("all")
   const [filteredAccounts, setFilteredAccounts] = useState<any[]>([])
+  const [chargeResult, setChargeResult] = useState<any>(null)
+  const [chargeLoading, setChargeLoading] = useState(false)
 
   useEffect(() => {
     load()
   }, [])
+
+  useEffect(() => {
+    handleSearch()
+  }, [searchTerm, filterType, filterStatus, accounts])
 
   const load = async () => {
     try {
@@ -23,47 +31,155 @@ export default function ManagerAccounts() {
   }
 
   const handleSearch = () => {
-    if (!searchTerm.trim()) {
-      setFilteredAccounts(accounts)
-      return
+    let result = accounts
+    if (searchTerm.trim()) {
+      result = result.filter(acc =>
+        acc.account_number?.includes(searchTerm) ||
+        acc.customer_profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
     }
-    const filtered = accounts.filter(acc => 
-      acc.account_number?.includes(searchTerm) || 
-      acc.customer_profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    setFilteredAccounts(filtered)
+    if (filterType !== "all") {
+      result = result.filter(acc => acc.account_type?.toLowerCase() === filterType.toLowerCase())
+    }
+    if (filterStatus !== "all") {
+      result = result.filter(acc => acc.status?.toLowerCase() === filterStatus.toLowerCase())
+    }
+    setFilteredAccounts(result)
   }
 
   const changeStatus = async (id: string, newStatus: string) => {
+    if (newStatus === 'active') {
+      const account = accounts.find(a => a.account_id === id)
+      if (account?.account_type?.toLowerCase() === 'savings' && account.balance < 1000) {
+        alert("Strict Rule: Cannot unfreeze/unblock a savings account with a balance below ₹1,000.")
+        return
+      }
+    }
     try {
       await api.put(`/accounts/${id}/status?status=${newStatus}`)
       load()
-    } catch (e) {
-      alert("Status update failed")
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Status update failed")
+    }
+  }
+
+  const applyMonthlyCharges = async (dryRun: boolean) => {
+    setChargeLoading(true)
+    setChargeResult(null)
+    try {
+      const endpoint = dryRun ? "/accounts/preview-monthly-charges" : "/accounts/trigger-monthly-charges"
+      const res = await api.post(endpoint, {}, { timeout: 120000 })
+      const data = dryRun ? res.data.preview : res.data.summary
+      setChargeResult({ ...data, isDryRun: dryRun, message: res.data.message })
+      if (!dryRun) load()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Failed to apply charges")
+    } finally {
+      setChargeLoading(false)
     }
   }
 
   return (
     <DashboardLayout role="manager">
       <h2 className="text-3xl font-bold tracking-tight mb-6">Account Management</h2>
+
+      {/* Monthly Charges Panel */}
+      <Card className="mb-6 border-orange-200 bg-orange-50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-orange-800 text-base flex items-center gap-2">
+            🏦 Monthly Bank Charges (10th of Each Month)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-orange-700 mb-4">
+            Automatically applied on the <strong>10th of each month</strong>: Minimum balance fine
+            (Savings ₹200 / Current ₹1,000 / Investment ₹10,000) + ₹50 notification charge per account.
+            Use <strong>Preview</strong> to see what will be charged before applying.
+          </p>
+          <div className="flex gap-3 flex-wrap">
+            <button
+              onClick={() => applyMonthlyCharges(true)}
+              disabled={chargeLoading}
+              className="px-4 py-2 text-sm bg-white border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-100 transition font-medium disabled:opacity-50"
+            >
+              {chargeLoading ? "Loading..." : "🔍 Preview Charges"}
+            </button>
+            <button
+              onClick={() => {
+                if (confirm("Are you sure you want to apply monthly charges to ALL active accounts? This will deduct balance from customers and send email notifications.")) {
+                  applyMonthlyCharges(false)
+                }
+              }}
+              disabled={chargeLoading}
+              className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium disabled:opacity-50"
+            >
+              {chargeLoading ? "Processing..." : "⚡ Apply Monthly Charges Now"}
+            </button>
+          </div>
+
+          {/* Charge result summary */}
+          {chargeResult && (
+            <div className={`mt-4 p-4 rounded-lg border ${chargeResult.isDryRun ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
+              <p className={`text-sm font-semibold mb-2 ${chargeResult.isDryRun ? 'text-blue-800' : 'text-green-800'}`}>
+                {chargeResult.isDryRun ? "📋 Preview Results (No charges applied)" : "✅ Charges Applied Successfully"}
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="bg-white p-2 rounded border text-center">
+                  <div className="font-bold text-gray-800">{chargeResult.accounts_processed}</div>
+                  <div className="text-gray-500 text-xs">Accounts Processed</div>
+                </div>
+                <div className="bg-white p-2 rounded border text-center">
+                  <div className="font-bold text-red-600">{chargeResult.fines_applied}</div>
+                  <div className="text-gray-500 text-xs">Balance Fines Applied</div>
+                </div>
+                <div className="bg-white p-2 rounded border text-center">
+                  <div className="font-bold text-orange-600">₹{chargeResult.total_fines_collected?.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                  <div className="text-gray-500 text-xs">Total Fines</div>
+                </div>
+                <div className="bg-white p-2 rounded border text-center">
+                  <div className="font-bold text-purple-600">₹{chargeResult.grand_total_collected?.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                  <div className="text-gray-500 text-xs">Grand Total Charged</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <CardTitle>All Customer Accounts</CardTitle>
-            <div className="flex gap-2">
-              <input 
-                 type="text" 
-                 placeholder="Search name or account..." 
-                 value={searchTerm}
-                 onChange={(e) => setSearchTerm(e.target.value)}
-                 className="px-3 py-1.5 border rounded-lg text-sm w-64 outline-none focus:ring-1 focus:ring-primary"
-              />
-              <button 
-                onClick={handleSearch}
-                className="bg-primary text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-primary/90 transition"
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="px-3 py-1.5 border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-primary"
               >
-                Search
-              </button>
+                <option value="all">All Types</option>
+                <option value="savings">Savings</option>
+                <option value="current">Current</option>
+                <option value="investment">Investment</option>
+              </select>
+
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-1.5 border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="frozen">Frozen</option>
+                <option value="closed">Blocked</option>
+              </select>
+
+              <input
+                type="text"
+                placeholder="Search name or account..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="px-3 py-1.5 border rounded-lg text-sm w-full md:w-64 outline-none focus:ring-1 focus:ring-primary"
+              />
             </div>
           </div>
         </CardHeader>
@@ -86,11 +202,11 @@ export default function ManagerAccounts() {
                     <td className="px-6 py-4 text-left font-medium text-gray-900">{acc.customer_profile?.full_name || 'N/A'}</td>
                     <td className="px-6 py-4 text-left font-mono">{acc.account_number}</td>
                     <td className="px-6 py-4 uppercase text-xs">{acc.account_type}</td>
-                    <td className="px-6 py-4 text-right font-semibold">₹{acc.balance}</td>
+                    <td className="px-6 py-4 text-right font-semibold">₹{Number(acc.balance).toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
                     <td className="px-6 py-4">
                        <span className={`px-2 py-1 text-xs rounded-full ${
-                         acc.status === 'active' ? 'bg-green-100 text-green-800' : 
-                         acc.status === 'frozen' ? 'bg-orange-100 text-orange-800' : 
+                         acc.status === 'active' ? 'bg-green-100 text-green-800' :
+                         acc.status === 'frozen' ? 'bg-orange-100 text-orange-800' :
                          'bg-red-100 text-red-800'
                        }`}>
                          {acc.status === 'closed' ? 'blocked' : acc.status}
