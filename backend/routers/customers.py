@@ -143,28 +143,6 @@ def profile_update_request(new_data: Dict[str, Any], user: Dict[str, Any] = Depe
     except Exception as e:
         print(f"DEBUG: Profile update email failed: {e}")
         
-    # Apply ₹75 profile edit service charge from customer's first active account
-    try:
-        from services.banking import _apply_charge, PROFILE_EDIT_CHARGE # type: ignore
-        from services.email import send_profile_edit_charge_notice # type: ignore
-        # Find the customer's first active account
-        accs_res = supabase.table("accounts").select("account_id, account_number, balance") \
-            .eq("customer_id", user["id"]).eq("status", "active").limit(1).execute()
-        if accs_res.data:
-            acc = accs_res.data[0]
-            charged_bal = _apply_charge(
-                str(acc["account_id"]),
-                acc["account_number"],
-                PROFILE_EDIT_CHARGE,
-                "Profile update service charge"
-            )
-            # Get customer name for email
-            prof_res = supabase.table("customer_profile").select("full_name").eq("customer_id", user["id"]).execute()
-            cust_name = prof_res.data[0]["full_name"] if prof_res.data else "Customer"
-            send_profile_edit_charge_notice(cust_name, user["email"], acc["account_number"], charged_bal)
-    except Exception as charge_err:
-        print(f"DEBUG: Profile edit charge failed: {charge_err}")
-
     # Log the profile update request
     try:
         supabase.table("audit_logs").insert({
@@ -210,6 +188,30 @@ def profile_update_approve(request_id: str, user: Dict[str, Any] = Depends(get_c
     # Apply changes
     supabase.table("customer_profile").update(req["new_data"]).eq("customer_id", req["customer_id"]).execute()
     
+    # Apply ₹75 profile edit service charge
+    try:
+        from services.banking import _apply_charge, PROFILE_EDIT_CHARGE # type: ignore
+        from services.email import send_profile_edit_charge_notice # type: ignore
+        # Find the customer's first active account
+        accs_res = supabase.table("accounts").select("account_id, account_number, balance") \
+            .eq("customer_id", req["customer_id"]).eq("status", "active").limit(1).execute()
+        
+        if accs_res.data:
+            acc = accs_res.data[0]
+            charged_bal = _apply_charge(
+                str(acc["account_id"]),
+                acc["account_number"],
+                PROFILE_EDIT_CHARGE,
+                "Profile update service charge (Approved)"
+            )
+            # Get customer name/email for notification
+            prof_res = supabase.table("customer_profile").select("full_name, email").eq("customer_id", req["customer_id"]).execute()
+            if prof_res.data:
+                prof = prof_res.data[0]
+                send_profile_edit_charge_notice(prof["full_name"], prof["email"], acc["account_number"], charged_bal)
+    except Exception as charge_err:
+        print(f"DEBUG: Profile edit charge failed during approval: {charge_err}")
+
     # Mark approved
     supabase.table("profile_update_requests").update({"status": "approved"}).eq("request_id", request_id).execute()
     
@@ -297,6 +299,31 @@ def profile_update_approve_md(request_id: str, user: Dict[str, Any] = Depends(ge
     safe_data.pop("pan_card_number", None)
     
     supabase.table("customer_profile").update(safe_data).eq("customer_id", req["customer_id"]).execute()
+    
+    # Apply ₹75 profile edit service charge (MD Approval)
+    try:
+        from services.banking import _apply_charge, PROFILE_EDIT_CHARGE # type: ignore
+        from services.email import send_profile_edit_charge_notice # type: ignore
+        # Find the customer's first active account
+        accs_res = supabase.table("accounts").select("account_id, account_number, balance") \
+            .eq("customer_id", req["customer_id"]).eq("status", "active").limit(1).execute()
+        
+        if accs_res.data:
+            acc = accs_res.data[0]
+            charged_bal = _apply_charge(
+                str(acc["account_id"]),
+                acc["account_number"],
+                PROFILE_EDIT_CHARGE,
+                "Profile update service charge (MD Approved)"
+            )
+            # Get customer name/email for notification (re-fetch if needed or use previous)
+            prof_res = supabase.table("customer_profile").select("full_name, email").eq("customer_id", req["customer_id"]).execute()
+            if prof_res.data:
+                prof = prof_res.data[0]
+                send_profile_edit_charge_notice(prof["full_name"], prof["email"], acc["account_number"], charged_bal)
+    except Exception as charge_err:
+        print(f"DEBUG: Profile edit charge failed during MD approval: {charge_err}")
+
     supabase.table("profile_update_requests").update({"status": "approved"}).eq("request_id", request_id).execute()
     
     # Send email to customer
