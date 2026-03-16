@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card"
 import { Globe, ShieldCheck, Mail, Lock, Eye, EyeOff, UserSquare2, KeyRound } from "lucide-react"
 import api from "@/services/api"
 import { createBrowserClient } from '@supabase/ssr'
