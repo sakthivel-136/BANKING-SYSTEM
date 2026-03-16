@@ -259,7 +259,7 @@ export default function MDEscalations() {
                   </div>
                   {alert.escalation_message && (
                     <div className="mb-3 bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
-                      <span className="font-semibold block mb-1">Manager's Escalation Note:</span>
+                      <span className="font-semibold block mb-1">Manager&apos;s Escalation Note:</span>
                       {alert.escalation_message}
                     </div>
                   )}

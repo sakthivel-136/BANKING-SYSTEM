@@ -182,7 +182,7 @@ export function ManagerCustomerEditModal({ customer, onClose, onSuccess }: Props
                   <Key className="w-5 h-5 text-blue-600" />
                   <h4 className="font-semibold text-blue-900">Step 1: Customer OTP Verification</h4>
                 </div>
-                <p className="text-sm text-blue-700 mb-4">An OTP will be sent to the customer's registered email (<strong>{customer.email}</strong>). Ask the customer to share it with you.</p>
+                <p className="text-sm text-blue-700 mb-4">An OTP will be sent to the customer&apos;s registered email (<strong>{customer.email}</strong>). Ask the customer to share it with you.</p>
                 {!otpSent ? (
                   <button onClick={handleSendOtp} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2">
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
