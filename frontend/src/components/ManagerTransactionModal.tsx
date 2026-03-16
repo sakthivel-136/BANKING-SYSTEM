@@ -15,6 +15,7 @@ export function ManagerTransactionModal({ account, onClose }: ManagerTransaction
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [reversingId, setReversingId] = useState<string | null>(null)
+  const [bulkReversing, setBulkReversing] = useState(false)
 
   useEffect(() => {
     loadTransactions()
@@ -37,14 +38,10 @@ export function ManagerTransactionModal({ account, onClose }: ManagerTransaction
 
     setReversingId(txn.transaction_id)
     try {
-      // Create a 'dummy' complaint or use a system complaint ID for direct reversals
-      // Actually, we can just use the transaction ID as the 'complaint' or create a special route.
-      // But let's use the 'reversal/from-complaint' logic with a special tag if needed.
-      // Or better, let's just use the 'reversals/from-complaint' but allow complaint_id to be 'DIRECT_MGR'
       await api.post(`/reversals/from-complaint/DIRECT_${txn.transaction_id.slice(0, 8)}`, {
         transaction_id: txn.transaction_id,
         amount: txn.amount,
-        type: "charge_double", // Default type for direct manager action
+        type: "charge_double",
         reason: `MGR DIRECT: ${reason}`,
       })
       alert("Reversal request successfully sent to MD for approval.")
@@ -54,6 +51,32 @@ export function ManagerTransactionModal({ account, onClose }: ManagerTransaction
       setReversingId(null)
     }
   }
+
+  const handleBulkReversal = async () => {
+    if (!confirm("Multiple charges detected. Are you sure you want to reverse ALL duplicate monthly charges for this account at once?")) return
+    
+    setBulkReversing(true)
+    try {
+      await api.post(`/reversals/bulk-account-charges/${account.account_id}`)
+      alert("All duplicate charges consolidated into one reversal request sent to MD for approval.")
+      onClose()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Failed to initiate bulk reversal.")
+    } finally {
+      setBulkReversing(false)
+    }
+  }
+
+  // Filter for matching charges in the current month
+  const currentMonthCharges = transactions.filter(t => {
+    const isCharge = t.description?.toLowerCase().includes("monthly notification charge") || 
+                     t.description?.toLowerCase().includes("min balance fine")
+    const date = new Date(t.created_at)
+    const now = new Date()
+    return isCharge && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
+  })
+
+  const hasDuplicateCharges = currentMonthCharges.length > 1
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
@@ -110,18 +133,25 @@ export function ManagerTransactionModal({ account, onClose }: ManagerTransaction
                           {isCredit ? '+' : '-'}₹{Number(t.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-6 py-4">
-                          <button
-                            onClick={() => requestReversal(t)}
-                            disabled={reversingId === t.transaction_id}
-                            className="flex items-center gap-1.5 text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 px-3 py-2 rounded-lg transition font-bold shadow-sm disabled:opacity-50"
-                          >
-                            {reversingId === t.transaction_id ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <RefreshCcw className="w-3.5 h-3.5" />
-                            )}
-                            Reversal
-                          </button>
+                          {/* Hide individual reversal button for monthly charges if it's the only one, as per user request */}
+                          {(!t.description?.toLowerCase().includes("monthly notification charge") && 
+                            !t.description?.toLowerCase().includes("min balance fine")) || 
+                            hasDuplicateCharges ? (
+                            <button
+                              onClick={() => requestReversal(t)}
+                              disabled={reversingId === t.transaction_id}
+                              className="flex items-center gap-1.5 text-xs bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 px-3 py-2 rounded-lg transition font-bold shadow-sm disabled:opacity-50"
+                            >
+                              {reversingId === t.transaction_id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                  <RefreshCcw className="w-3.5 h-3.5" />
+                              )}
+                              Reversal
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-gray-400 italic">No duplicates</span>
+                          )}
                         </td>
                       </tr>
                     )
@@ -140,7 +170,19 @@ export function ManagerTransactionModal({ account, onClose }: ManagerTransaction
             </div>
           )}
         </CardContent>
-        <div className="p-4 bg-gray-50 border-t flex justify-end">
+        <div className="p-4 bg-gray-50 border-t flex justify-between items-center">
+             <div className="flex-1">
+               {hasDuplicateCharges && (
+                 <button 
+                  onClick={handleBulkReversal}
+                  disabled={bulkReversing}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-red-700 transition flex items-center gap-2 animate-pulse"
+                 >
+                   {bulkReversing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+                   REVERSE ALL DUPLICATE CHARGES
+                 </button>
+               )}
+             </div>
              <button onClick={onClose} className="px-6 py-2 bg-white border border-gray-300 rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition">
                 Close Details
              </button>

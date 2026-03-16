@@ -182,3 +182,50 @@ def list_all_reversals(user: Dict[str, Any] = Depends(require_role(["manager", "
         "complaints(title)"
     ).order("created_at", desc=True).execute()
     return res.data or []
+
+
+@router.post("/bulk-account-charges/{account_id}")
+def bulk_account_reversal(
+    account_id: str,
+    user: Dict[str, Any] = Depends(require_role(["manager", "admin"])),
+):
+    """
+    Creates a single reversal request for ALL monthly charges (fines + notification)
+    deducted from this account in the current month.
+    """
+    from datetime import datetime
+    now = datetime.now()
+    
+    # 1. Find all charges for this account this month
+    txns = supabase.table("transactions").select("*").eq("account_id", account_id).execute().data or []
+    
+    charges_to_reverse = []
+    total_val = 0.0
+    
+    for t in txns:
+        desc = (t.get("description") or "").lower()
+        if "monthly notification charge" in desc or "min balance fine" in desc:
+            created_at = datetime.fromisoformat(t["created_at"].replace("Z", "+00:00"))
+            if created_at.month == now.month and created_at.year == now.year:
+                charges_to_reverse.append(t["transaction_id"])
+                val = float(t["amount"])
+                total_val = total_val + val
+    
+    total_amount = float(total_val)
+
+    if not charges_to_reverse:
+        raise HTTPException(status_code=400, detail="No monthly charges found for this account this month.")
+
+    # 2. Create one reversal request for the sum total
+    reversal_data = {
+        "source_account_id": account_id,
+        "amount": total_amount,
+        "type": "charge_double",
+        "reason": f"BULK REVERSAL: {len(charges_to_reverse)} charges detected for this month.",
+        "created_by_manager_id": user["id"],
+        "status": "pending",
+        "metadata": {"transaction_ids": charges_to_reverse} # Store for audit
+    }
+    
+    res = supabase.table("reversal_requests").insert(reversal_data).execute()
+    return res.data[0] if res.data else {}

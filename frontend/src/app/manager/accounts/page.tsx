@@ -15,6 +15,7 @@ export default function ManagerAccounts() {
   const [chargeResult, setChargeResult] = useState<any>(null)
   const [chargeLoading, setChargeLoading] = useState(false)
   const [isChargeApplied, setIsChargeApplied] = useState(false)
+  const [chargeCount, setChargeCount] = useState(0)
   const [viewingAccount, setViewingAccount] = useState<any | null>(null)
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export default function ManagerAccounts() {
     try {
       const res = await api.get("/accounts/monthly-charges-status")
       setIsChargeApplied(res.data.applied)
+      setChargeCount(res.data.count || 0)
     } catch (e) { console.error(e) }
   }
 
@@ -141,7 +143,7 @@ export default function ManagerAccounts() {
               >
                 {chargeLoading ? "Applying..." : "Apply Charges"}
               </button>
-              {isChargeApplied && (
+              {chargeCount > 1 && (
                 <button 
                   onClick={handleReverseCharges}
                   className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 font-bold transition-all shadow-lg animate-pulse"
