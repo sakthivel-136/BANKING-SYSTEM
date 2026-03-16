@@ -15,6 +15,7 @@ Follow these steps to host your SmartBank application on the internet for free u
 1. **Login to Render** and click **New +** > **Blueprint**.
 2. **Connect your GitHub** and select your `BANKING-SYSTEM` repository.
 3. Render will detect the `backend/render.yaml` file.
+4. **Branch**: Select **`main`**.
 4. **Configure Environment Variables**:
    In the Render dashboard, go to **Environment** and add the variables from your `smartbank_credentials.txt` file (find this in your project root).
    - `SUPABASE_URL`
