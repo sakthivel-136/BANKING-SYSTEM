@@ -1,4 +1,5 @@
-from fastapi import FastAPI # type: ignore
+from fastapi import FastAPI, Request # type: ignore
+import time
 from fastapi.middleware.cors import CORSMiddleware # type: ignore
 from contextlib import asynccontextmanager
 
@@ -19,6 +20,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SmartBank Automation System", version="1.0.0", lifespan=lifespan)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    print(f"REQUEST LOG: {request.method} {request.url.path} - Status: {response.status_code} - Duration: {duration:.2f}s")
+    return response
 
 # CORS config
 app.add_middleware(

@@ -250,3 +250,17 @@ def verify_password(payload: dict, user: Dict[str, Any] = Depends(get_current_us
         return {"status": "verified"}
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid password")
+
+@router.get("/test-connectivity")
+def test_connectivity(email: str):
+    """Diagnostic endpoint to test email connectivity directly in the browser."""
+    from services.email import SMTP_HOST, SMTP_PORT
+    try:
+        send_email(
+            email,
+            "SmartBank — Connectivity Test",
+            "<p>If you see this, your email system is working perfectly!</p>"
+        )
+        return {"status": "success", "message": f"Test email successfully initiated for {email}. Please check your inbox and spam folder."}
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "host": SMTP_HOST, "port": SMTP_PORT}
