@@ -25,8 +25,11 @@ def _mask_account(acc: Any) -> str:
 
 def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] = None):
     """
-    Core email sender with support for both TLS (587) and SSL (465).
+    Resilient email sender with auto-fallback for TLS/SSL and password cleaning.
     """
+    # Clean password in case user added quotes in Render UI
+    clean_password = str(SMTP_PASSWORD).strip('"').strip("'")
+    
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = f"{FROM_NAME} <{FROM_EMAIL}>"
@@ -36,24 +39,32 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
         msg.attach(MIMEText(plain_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    try:
-        print(f"DEBUG: Attempting to send email to {to} via {SMTP_HOST}:{SMTP_PORT}...")
-        
-        # Use SMTP_SSL for port 465, standard SMTP with STARTTLS for others
-        if SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
-        else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
-            server.starttls()
+    # Try primary port first, then attempt fallback
+    ports_to_try = [SMTP_PORT]
+    if SMTP_PORT == 587: ports_to_try.append(465)
+    elif SMTP_PORT == 465: ports_to_try.append(587)
+
+    last_error = None
+    for port in ports_to_try:
+        try:
+            print(f"DEBUG: Attempting email to {to} via {SMTP_HOST}:{port}...")
+            if port == 465:
+                server = smtplib.SMTP_SSL(SMTP_HOST, port, timeout=10)
+            else:
+                server = smtplib.SMTP(SMTP_HOST, port, timeout=10)
+                server.starttls()
             
-        server.login(str(SMTP_USER), str(SMTP_PASSWORD))
-        server.sendmail(str(FROM_EMAIL), to, msg.as_string())
-        server.quit()
-        print(f"DEBUG: Email sent successfully to {to}")
-        
-    except Exception as e:
-        print(f"CRITICAL EMAIL FAILURE: {str(e)}")
-        # We don't reraise because this is usually called in BackgroundTasks
+            server.login(str(SMTP_USER), clean_password)
+            server.sendmail(str(FROM_EMAIL), to, msg.as_string())
+            server.quit()
+            print(f"DEBUG: Email success via port {port}")
+            return # Success!
+        except Exception as e:
+            last_error = e
+            print(f"DEBUG: Port {port} failed: {str(e)}")
+            continue
+
+    print(f"CRITICAL EMAIL FAILURE: All ports failed. Last error: {str(last_error)}")
 
 
 # ── Specific notification functions ──────────────────────────────────
