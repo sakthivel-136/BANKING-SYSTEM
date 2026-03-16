@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { DashboardCard } from "@/components/ui/DashboardCard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { PieChart, BarChart, TrendingUp, HandCoins, Download } from "lucide-react"
+import { PieChart, BarChart, TrendingUp, HandCoins, Download, Landmark, PieChart as PieIcon, BarChart3 } from "lucide-react"
 import api from "@/services/api"
 
 export default function MDDashboard() {
@@ -46,20 +46,22 @@ export default function MDDashboard() {
     }
   }
 
-  const handleDownloadReport = async () => {
+  const handleDownloadReport = async (format: "csv" | "pdf") => {
     try {
-      const res = await api.get("/reports/monthly-download", { responseType: "blob" })
+      const endpoint = format === "csv" ? "/reports/monthly-download" : "/reports/monthly-download-pdf"
+      const res = await api.get(endpoint, { responseType: "blob" })
       const url = window.URL.createObjectURL(new Blob([res.data]))
       const link = document.createElement("a")
       link.href = url
       const now = new Date()
-      link.setAttribute("download", `smartbank_report_${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}.csv`)
+      const ext = format === "csv" ? "csv" : "pdf"
+      link.setAttribute("download", `smartbank_report_${now.getFullYear()}_${String(now.getMonth()+1).padStart(2,'0')}.${ext}`)
       document.body.appendChild(link)
       link.click()
       link.remove()
       window.URL.revokeObjectURL(url)
     } catch (err: any) {
-      alert("Failed to download report: " + (err.response?.data?.detail || err.message))
+      alert(`Failed to download ${format.toUpperCase()} report: ` + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -73,10 +75,16 @@ export default function MDDashboard() {
         </h2>
         <div className="flex gap-3">
           <button 
-            onClick={handleDownloadReport}
+            onClick={() => handleDownloadReport("csv")}
+            className="bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-800 transition shadow-sm font-medium"
+          >
+            <Download className="w-4 h-4" /> CSV Report
+          </button>
+          <button 
+            onClick={() => handleDownloadReport("pdf")}
             className="bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-emerald-700 transition shadow-sm font-medium"
           >
-            <Download className="w-4 h-4" /> Download Monthly Report
+            <Download className="w-4 h-4" /> PDF Report
           </button>
           <button 
             onClick={() => setShowManagerModal(true)}
@@ -171,34 +179,93 @@ export default function MDDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-         <Card>
-            <CardHeader><CardTitle>Transaction Volume Trends</CardTitle></CardHeader>
+         <Card className="border-gray-200">
+            <CardHeader className="pb-2">
+               <CardTitle className="text-lg font-bold flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-purple-600" /> Transaction Volume Trends
+               </CardTitle>
+            </CardHeader>
             <CardContent>
-               <div className="h-64 bg-gray-50 flex items-center justify-center border border-dashed rounded text-sm text-gray-500">
-                  {/* Real implementation would use Recharts here, mocked for preview */}
-                  [Bar Chart Placeholder: Deposits vs Withdrawals vs Transfers]
+               <div className="h-64 flex items-end justify-between px-8 py-4 bg-gray-50/50 rounded-xl border border-gray-100">
+                  {/* CSS/SVG Bar Chart */}
+                  {[
+                    { label: "Deposits", value: report['Total Deposits'], color: "bg-emerald-500" },
+                    { label: "Withdraws", value: report['Total Withdrawals'], color: "bg-rose-500" },
+                    { label: "Transfers", value: report['Total Transfers'], color: "bg-blue-500" }
+                  ].map((bar, idx) => {
+                    const maxVal = Math.max(report['Total Deposits'], report['Total Withdrawals'], report['Total Transfers'], 1);
+                    const height = (bar.value / maxVal) * 100;
+                    return (
+                      <div key={idx} className="flex flex-col items-center gap-3 w-1/4 h-full justify-end group">
+                        <div className="relative w-full flex justify-center items-end h-full">
+                          <div 
+                            className={`${bar.color} w-16 rounded-t-lg transition-all duration-500 group-hover:opacity-80 shadow-sm`}
+                            style={{ height: `${height}%` }}
+                          />
+                          <div className="absolute -top-8 text-[10px] font-bold text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity bg-white px-2 py-1 rounded border shadow-sm">
+                            ₹{bar.value.toLocaleString()}
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-tighter">{bar.label}</span>
+                      </div>
+                    )
+                  })}
                </div>
-               <div className="flex justify-around mt-4 text-sm font-medium">
-                  <span className="text-green-600">Deposits: ₹{report['Total Deposits']}</span>
-                  <span className="text-red-600">Withdraws: ₹{report['Total Withdrawals']}</span>
-                  <span className="text-blue-600">Transfers: ₹{report['Total Transfers']}</span>
+               <div className="flex justify-around mt-6 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-full" />
+                    <span className="font-medium text-gray-600">Deposits: <span className="text-emerald-700 font-bold">₹{report['Total Deposits'].toLocaleString()}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-rose-500 rounded-full" />
+                    <span className="font-medium text-gray-600">Withdraws: <span className="text-rose-700 font-bold">₹{report['Total Withdrawals'].toLocaleString()}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full" />
+                    <span className="font-medium text-gray-600">Transfers: <span className="text-blue-700 font-bold">₹{report['Total Transfers'].toLocaleString()}</span></span>
+                  </div>
                </div>
             </CardContent>
          </Card>
-         <Card>
-            <CardHeader><CardTitle>Account Status Distribution</CardTitle></CardHeader>
+
+         <Card className="border-gray-200">
+            <CardHeader className="pb-2">
+               <CardTitle className="text-lg font-bold flex items-center gap-2">
+                  <PieIcon className="w-5 h-5 text-orange-600" /> Account Status Distribution
+               </CardTitle>
+            </CardHeader>
             <CardContent>
-               <div className="h-64 bg-gray-50 flex items-center justify-center border border-dashed rounded text-sm text-gray-500 relative">
-                  [Donut Chart Placeholder]
-                  <div className="absolute flex flex-col items-center">
-                     <span className="text-2xl font-bold text-gray-800">{report['Total Accounts']}</span>
-                     <span className="text-xs text-gray-400 uppercase">Accounts</span>
+               <div className="h-64 flex items-center justify-center relative">
+                  {/* CSS Conic Gradient Donut */}
+                  <div 
+                    className="w-48 h-48 rounded-full shadow-inner flex items-center justify-center"
+                    style={{
+                      background: `conic-gradient(
+                        #10b981 0% ${((report['Total Accounts'] - report['Frozen Accounts'] - report['Blocked Accounts']) / report['Total Accounts']) * 100}%, 
+                        #f59e0b ${((report['Total Accounts'] - report['Frozen Accounts'] - report['Blocked Accounts']) / report['Total Accounts']) * 100}% ${((report['Total Accounts'] - report['Blocked Accounts']) / report['Total Accounts']) * 100}%, 
+                        #ef4444 ${((report['Total Accounts'] - report['Blocked Accounts']) / report['Total Accounts']) * 100}% 100%
+                      )`
+                    }}
+                  >
+                    <div className="w-32 h-32 bg-white rounded-full flex flex-col items-center justify-center shadow-lg border border-gray-50">
+                       <span className="text-3xl font-extrabold text-gray-900">{report['Total Accounts']}</span>
+                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Total Assets</span>
+                    </div>
                   </div>
                </div>
-               <div className="flex justify-around mt-4 text-sm font-medium">
-                  <span className="text-green-600">Active: {report['Total Accounts'] - report['Frozen Accounts'] - report['Blocked Accounts']}</span>
-                  <span className="text-orange-600">Frozen: {report['Frozen Accounts']}</span>
-                  <span className="text-red-600">Blocked: {report['Blocked Accounts']}</span>
+               <div className="flex justify-around mt-6 text-sm font-medium">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-full" />
+                    <span className="text-gray-600">Active: <span className="text-emerald-700 font-bold">{report['Total Accounts'] - report['Frozen Accounts'] - report['Blocked Accounts']}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-orange-500 rounded-full" />
+                    <span className="text-gray-600">Frozen: <span className="text-orange-700 font-bold">{report['Frozen Accounts']}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-rose-500 rounded-full" />
+                    <span className="text-gray-600">Blocked: <span className="text-rose-700 font-bold">{report['Blocked Accounts']}</span></span>
+                  </div>
                </div>
             </CardContent>
          </Card>

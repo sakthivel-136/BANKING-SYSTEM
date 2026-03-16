@@ -309,14 +309,14 @@ export default function Login() {
                   <form className="space-y-5" onSubmit={handleCustomerOTPVerify}>
                     <div className="flex flex-col items-center">
                        <KeyRound className="w-12 h-12 text-blue-500 mb-3 opacity-20" />
-                       <label className="block text-sm font-medium text-gray-700">Enter 6-Digit OTP</label>
+                       <label className="block text-sm font-medium text-gray-700">Enter 8-Digit OTP</label>
                        <p className="text-xs text-gray-500 text-center mb-4 mt-1 px-4">An email with the security code has been sent for account <span className="font-semibold text-gray-700">{customerId}</span></p>
                        
                        <input
                           type="text"
                           required
                           maxLength={8}
-                          className="focus:ring-primary focus:border-primary block w-48 text-center text-3xl tracking-widest sm:text-2xl border-gray-300 rounded-md py-3 border"
+                          className="focus:ring-primary focus:border-primary block w-56 text-center text-3xl tracking-widest sm:text-2xl border-gray-300 rounded-md py-3 border"
                           placeholder="••••••••"
                           value={otpCode}
                           onChange={(e) => setOtpCode(e.target.value)}

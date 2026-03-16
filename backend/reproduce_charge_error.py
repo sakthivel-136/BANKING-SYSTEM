@@ -1,6 +1,6 @@
 import sys
 import traceback
-from database import supabase
+from database import supabase # type: ignore
 
 # Monkey patch supabase table insert to see what's being sent
 original_table = supabase.table
@@ -18,7 +18,7 @@ def mocked_table(table_name):
 supabase.table = mocked_table
 
 try:
-    from services.banking import apply_monthly_charges
+    from services.banking import apply_monthly_charges # type: ignore
     print("🚀 Triggering apply_monthly_charges(dry_run=False)...")
     result = apply_monthly_charges(dry_run=False)
     print(f"✅ Success: {result}")

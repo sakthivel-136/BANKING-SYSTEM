@@ -73,9 +73,19 @@ export default function CustomerEnquiry() {
             </h1>
             <p className="text-gray-500 mt-1">Ask us anything, our managers are here to help.</p>
         </div>
-        <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full ring-1 ring-emerald-200">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-            Manager Online
+        <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full ring-1 ring-emerald-200">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                Manager Online
+            </div>
+            {enquiries.length > 0 && (
+                <button
+                    onClick={() => handleEndChat(enquiries[0].enquiry_id)}
+                    className="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-200 transition font-medium flex items-center gap-1.5"
+                >
+                    <XCircle className="w-3.5 h-3.5" /> End Chat
+                </button>
+            )}
         </div>
       </div>
 

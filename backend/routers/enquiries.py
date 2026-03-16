@@ -8,10 +8,17 @@ router = APIRouter(prefix="/enquiries", tags=["enquiries"])
 
 @router.post("/")
 def create_enquiry(enquiry: EnquiryCreate, user: Dict[str, Any] = Depends(get_current_user)):
-    data = enquiry.dict()
-    data["customer_id"] = user["id"]
-    res = supabase.table("enquiries").insert(data).execute()
-    return res.data[0]
+    try:
+        data = enquiry.dict()
+        data["customer_id"] = user["id"]
+        # Automated greeting from manager
+        data["response"] = "Thank you for contacting with us. We are always ready for you 24/7. Please let us know if you have any more queries! Happy Banking!"
+        data["status"] = "Answered"
+        
+        res = supabase.table("enquiries").insert(data).execute()
+        return res.data[0] if res.data else None
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/")
 def get_enquiries(user: Dict[str, Any] = Depends(get_current_user)):
