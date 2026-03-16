@@ -25,7 +25,7 @@ def _mask_account(acc: Any) -> str:
 
 def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] = None):
     """
-    Core email sender. Called by the workflow engine and banking service.
+    Core email sender with support for both TLS (587) and SSL (465).
     """
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -36,11 +36,24 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
         msg.attach(MIMEText(plain_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-        server.ehlo()
-        server.starttls()
+    try:
+        print(f"DEBUG: Attempting to send email to {to} via {SMTP_HOST}:{SMTP_PORT}...")
+        
+        # Use SMTP_SSL for port 465, standard SMTP with STARTTLS for others
+        if SMTP_PORT == 465:
+            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
+        else:
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
+            server.starttls()
+            
         server.login(str(SMTP_USER), str(SMTP_PASSWORD))
         server.sendmail(str(FROM_EMAIL), to, msg.as_string())
+        server.quit()
+        print(f"DEBUG: Email sent successfully to {to}")
+        
+    except Exception as e:
+        print(f"CRITICAL EMAIL FAILURE: {str(e)}")
+        # We don't reraise because this is usually called in BackgroundTasks
 
 
 # ── Specific notification functions ──────────────────────────────────
