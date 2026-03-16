@@ -7,7 +7,7 @@ import api from "@/services/api"
 import { ArrowUpRight, ArrowDownRight, Download, Calendar as CalendarIcon, Filter, Loader2 } from "lucide-react"
 import { format, isAfter, isBefore, startOfDay, endOfDay } from "date-fns"
 import jsPDF from "jspdf"
-import "jspdf-autotable"
+import autoTable from "jspdf-autotable"
 
 // Types for jsPDF autotable plugin
 declare module 'jspdf' {
@@ -63,72 +63,82 @@ export default function CustomerTransactions() {
 
 
   const generatePDF = () => {
-    const doc = new jsPDF()
-
-    // Title: Centralised Bank Name
-    doc.setFontSize(22)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(30, 58, 138) // Primary #1E3A8A
-    doc.text("SMARTBANK AUTOMATION SYSTEM", doc.internal.pageSize.width / 2, 20, { align: "center" })
-
-    // Subtitle / Report info
-    doc.setFontSize(14)
-    doc.setFont("helvetica", "normal")
-    doc.setTextColor(100, 100, 100)
-    doc.text("Account Statement", doc.internal.pageSize.width / 2, 28, { align: "center" })
-
-    // Customer Details
-    doc.setFontSize(11)
-    doc.setTextColor(40, 40, 40)
-    doc.text(`Customer Name: ${profile?.full_name || 'N/A'}`, 14, 45)
-    doc.text(`Account Number: ${account?.account_number || 'N/A'}`, 14, 52)
-    doc.text(`Current Balance: Rs. ${account?.balance?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}`, 14, 59)
-    
-    // Date Range Details
-    doc.text(`Statement Period: ${startDate ? format(new Date(startDate), "MMM d, yyyy") : 'Start'} to ${endDate ? format(new Date(endDate), "MMM d, yyyy") : 'Present'}`, 14, 66)
-
-    // Divider Line
-    doc.setDrawColor(200, 200, 200)
-    doc.line(14, 72, doc.internal.pageSize.width - 14, 72)
-
-    // Transactions Table
-    const tableColumn = ["Date", "Description", "Ref / Receiver", "Amount (Rs.)", "Balance (Rs.)"]
-    const tableRows = filteredTransactions.map(txn => {
-      const isDeduction = txn.transaction_type === 'withdraw' || txn.transaction_type === 'transfer'
-      return [
-        format(new Date(txn.created_at), "dd MMM yyyy, hh:mm a"),
-        txn.transaction_type.toUpperCase(),
-        txn.receiver_account || 'N/A',
-        `${isDeduction ? '-' : '+'} ${txn.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
-        txn.balance_after.toLocaleString(undefined, { minimumFractionDigits: 2 })
-      ]
-    })
-
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 80,
-      theme: 'striped',
-      headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 9, cellPadding: 4 },
-      alternateRowStyles: { fillColor: [249, 250, 251] },
-      columnStyles: {
-         3: { halign: 'right' },
-         4: { halign: 'right' }
-      }
-    })
-
-    // Footer
-    const pageCount = doc.getNumberOfPages()
-    for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i)
-        doc.setFontSize(8)
-        doc.setTextColor(150, 150, 150)
-        doc.text(`Generated on ${format(new Date(), "dd MMM yyyy hh:mm a")} - Page ${i} of ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: "center" })
+    if (!filteredTransactions || filteredTransactions.length === 0) {
+      alert("No transactions available to download in this period.")
+      return
     }
 
-    // Save PDF
-    doc.save(`SmartBank_Statement_${account?.account_number}_${format(new Date(), "yyyyMMdd")}.pdf`)
+    try {
+      const doc = new jsPDF()
+
+      // Title: Centralised Bank Name
+      doc.setFontSize(22)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(30, 58, 138) // Primary #1E3A8A
+      doc.text("SMARTBANK AUTOMATION SYSTEM", doc.internal.pageSize.width / 2, 20, { align: "center" })
+
+      // Subtitle / Report info
+      doc.setFontSize(14)
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(100, 100, 100)
+      doc.text("Account Statement", doc.internal.pageSize.width / 2, 28, { align: "center" })
+
+      // Customer Details
+      doc.setFontSize(11)
+      doc.setTextColor(40, 40, 40)
+      doc.text(`Customer Name: ${profile?.full_name || 'N/A'}`, 14, 45)
+      doc.text(`Account Number: ${account?.account_number || 'N/A'}`, 14, 52)
+      doc.text(`Current Balance: Rs. ${account?.balance?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}`, 14, 59)
+    
+      // Date Range Details
+      doc.text(`Statement Period: ${startDate ? format(new Date(startDate), "MMM d, yyyy") : 'Start'} to ${endDate ? format(new Date(endDate), "MMM d, yyyy") : 'Present'}`, 14, 66)
+
+      // Divider Line
+      doc.setDrawColor(200, 200, 200)
+      doc.line(14, 72, doc.internal.pageSize.width - 14, 72)
+
+      // Transactions Table
+      const tableColumn = ["Date", "Description", "Ref / Receiver", "Amount (Rs.)", "Balance (Rs.)"]
+      const tableRows = filteredTransactions.map(txn => {
+        const isDeduction = txn.transaction_type === 'withdraw' || txn.transaction_type === 'transfer'
+        return [
+          format(new Date(txn.created_at), "dd MMM yyyy, hh:mm a"),
+          txn.transaction_type.toUpperCase(),
+          txn.receiver_account || 'N/A',
+          `${isDeduction ? '-' : '+'} ${Number(txn.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          Number(txn.balance_after).toLocaleString(undefined, { minimumFractionDigits: 2 })
+        ]
+      })
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 80,
+        theme: 'striped',
+        headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
+        styles: { fontSize: 9, cellPadding: 4 },
+        alternateRowStyles: { fillColor: [249, 250, 251] },
+        columnStyles: {
+           3: { halign: 'right' },
+           4: { halign: 'right' }
+        }
+      })
+
+      // Footer
+      const pageCount = doc.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i)
+          doc.setFontSize(8)
+          doc.setTextColor(150, 150, 150)
+          doc.text(`Generated on ${format(new Date(), "dd MMM yyyy hh:mm a")} - Page ${i} of ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: "center" })
+      }
+
+      // Save PDF
+      doc.save(`SmartBank_Statement_${account?.account_number}_${format(new Date(), "yyyyMMdd")}.pdf`)
+    } catch (err) {
+      console.error("PDF generation error", err)
+      alert("Something went wrong while generating the PDF. Please try again.")
+    }
   }
 
   return (

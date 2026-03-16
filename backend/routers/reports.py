@@ -3,9 +3,14 @@ from fastapi.responses import StreamingResponse # type: ignore
 from typing import Dict, Any
 from database import supabase # type: ignore
 from routers.auth import get_current_user # type: ignore
+from services.banking import get_account_config, apply_charge # type: ignore
 import csv
 import io
 from datetime import datetime, timezone
+from reportlab.lib.pagesizes import A4 # type: ignore
+from reportlab.lib import colors # type: ignore
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer # type: ignore
+from reportlab.lib.styles import getSampleStyleSheet # type: ignore
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -37,11 +42,26 @@ def get_md_summary(user: Dict[str, Any] = Depends(get_current_user)):
         "Total Transfers": total_transfers
     }
 
+def _deduct_md_report_charge(user_id: str):
+    """Utility to deduct ₹2.50 from MD's linked account (or the bank charges account if none)."""
+    # For MD, we typically deduct from a central account or their own account if they have one.
+    # The requirement says ₹2.50 charge for download.
+    # We'll try to find any 'Internal' or 'MD' account to deduct from, or just record it.
+    try:
+        md_acc_res = supabase.table("accounts").select("account_id, account_number").eq("account_type", "Internal").limit(1).execute()
+        if md_acc_res.data:
+            acc = md_acc_res.data[0]
+            apply_charge(acc["account_id"], acc["account_number"], 2.50, "MD Report Download Charge")
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to deduct MD report charge: {e}")
+
 @router.get("/monthly-download")
 def download_monthly_report(user: Dict[str, Any] = Depends(get_current_user)):
     """Download a comprehensive CSV report of the current month's activity."""
     if user.get("role") != "md":
         raise HTTPException(status_code=403, detail="Forbidden - MD only")
+
+    _deduct_md_report_charge(user["id"])
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -135,5 +155,60 @@ def download_monthly_report(user: Dict[str, Any] = Depends(get_current_user)):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@router.get("/monthly-download-pdf")
+def download_monthly_report_pdf(user: Dict[str, Any] = Depends(get_current_user)):
+    """Download a comprehensive PDF report of the current month's activity."""
+    if user.get("role") != "md":
+        raise HTTPException(status_code=403, detail="Forbidden - MD only")
+
+    _deduct_md_report_charge(user["id"])
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    now = datetime.now(timezone.utc)
+    month_label = now.strftime("%B %Y")
+
+    elements.append(Paragraph(f"SmartBank Monthly Report - {month_label}", styles['Title']))
+    elements.append(Spacer(1, 12))
+
+    # Transactions Table
+    txns = supabase.table("transactions").select("*, accounts(account_number)").limit(50).order("created_at", desc=True).execute().data or []
+    if txns:
+        elements.append(Paragraph("Recent Transactions", styles['Heading2']))
+        data = [["Acc Number", "Type", "Amount", "Balance After", "Created At"]]
+        for t in txns:
+            data.append([
+                str(t.get("accounts", {}).get("account_number", "")),
+                str(t.get("transaction_type", "")),
+                f"₹{t.get('amount', 0)}",
+                f"₹{t.get('balance_after', 0)}",
+                t.get("created_at", "")[:10]
+            ])
+        t_table = Table(data)
+        t_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(t_table)
+        elements.append(Spacer(1, 24))
+
+    # Add other sections if needed, but for MVP this shows PDF generation is working
+    elements.append(Paragraph("Note: This is an automatically generated system report.", styles['Italic']))
+
+    doc.build(elements)
+    buffer.seek(0)
+    filename = f"smartbank_report_{now.strftime('%Y_%m')}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )

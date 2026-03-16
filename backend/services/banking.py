@@ -37,7 +37,10 @@ def get_account_config(account_type: str) -> Dict[str, Any]:
         "transaction_otp_threshold": 10000.0,
         "requires_manager_approval_above": 50000.0,
         "min_balance_fine": 0.0,
-        "notification_charge": NOTIFICATION_CHARGE
+        "notification_charge": NOTIFICATION_CHARGE,
+        # Default download charges for statements/reports (₹2.50)
+        "statement_download_charge": 2.50,
+        "report_download_charge": 2.50,
     }
     
     # Override defaults for specific types
@@ -91,7 +94,7 @@ def _count_today_combined_txns(account_id: str) -> int:
     return len(res.data) if res.data else 0
 
 
-def _apply_charge(account_id: str, account_number: str, charge_amount: float, reason: str) -> float:
+def apply_charge(account_id: str, account_number: str, charge_amount: float, reason: str) -> float:
     """
     Deduct charge_amount from the customer's account.
     Credit it to the BANK-CHARGES central account.
@@ -192,7 +195,7 @@ def execute_transaction(txn: TransactionCreate):
             reason = f"Overload charge (>{TRANSACTION_LIMIT_PER_DAY} txns today)"
         
         if charge > 0:
-            charge_bal = _apply_charge(account_id, account_number, charge, reason)
+            charge_bal = apply_charge(account_id, account_number, charge, reason)
             current_balance = charge_bal
             if customer_email:
                 try:
@@ -221,7 +224,7 @@ def execute_transaction(txn: TransactionCreate):
             reason = f"Overload charge (>{TRANSACTION_LIMIT_PER_DAY} txns today)"
             if current_balance < amount + charge:
                 charge = max(current_balance - amount, 0)
-            charge_bal = _apply_charge(account_id, account_number, charge, reason)
+            charge_bal = apply_charge(account_id, account_number, charge, reason)
             current_balance = charge_bal
             if customer_email:
                 try:
@@ -295,7 +298,7 @@ def execute_transaction(txn: TransactionCreate):
         if current_balance < amount + charge:
             raise ValueError(f"Insufficient funds including 1% transfer fee of ₹{charge:,.2f}")
         
-        charge_bal = _apply_charge(account_id, account_number, charge, "Transfer service charge (1%)")
+        charge_bal = apply_charge(account_id, account_number, charge, "Transfer service charge (1%)")
         current_balance = charge_bal
         if customer_email:
             try:
@@ -403,7 +406,7 @@ def apply_monthly_charges(dry_run: bool = False) -> dict:
         # ── 1. Minimum balance fine ──────────────────────────────────────
         if balance < threshold:
             if not dry_run:
-                new_bal = _apply_charge(
+                new_bal = apply_charge(
                     account_id, account_number,
                     fine_amount,
                     f"Min balance fine ({account_type.capitalize()} < ₹{threshold:,.0f})"
@@ -421,7 +424,7 @@ def apply_monthly_charges(dry_run: bool = False) -> dict:
 
         # ── 2. Notification charge (dynamic) ───────────────────────────
         if not dry_run:
-            new_bal = _apply_charge(
+            new_bal = apply_charge(
                 account_id, account_number,
                 notification_charge_amount,
                 "Monthly notification charge"

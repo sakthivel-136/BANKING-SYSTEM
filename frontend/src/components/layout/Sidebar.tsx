@@ -32,8 +32,9 @@ export function Sidebar({ role }: { role: string }) {
       { name: 'Dashboard', href: '/md/dashboard', icon: Home },
       { name: 'Accounts', href: '/md/accounts', icon: List },
       { name: 'Reports', href: '/md/reports', icon: Activity },
+      { name: 'Reversals', href: '/md/reversals', icon: Activity },
       { name: 'Escalations', href: '/md/escalations', icon: AlertTriangle },
-      { name: 'Complaints (All)', href: '/manager/complaints', icon: AlertTriangle },
+      { name: 'Complaints', href: '/md/complaints', icon: AlertTriangle },
     ]
   } else if (role === 'admin') {
     navItems = [

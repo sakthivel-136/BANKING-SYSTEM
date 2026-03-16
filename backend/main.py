@@ -1,8 +1,8 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI # type: ignore
+from fastapi.middleware.cors import CORSMiddleware # type: ignore
 from contextlib import asynccontextmanager
 
-from routers import auth, customers, accounts, transactions, complaints, enquiries, notifications, reports, workflows, executions
+from routers import auth, customers, accounts, transactions, complaints, enquiries, notifications, reports, workflows, executions, reversals  # type: ignore
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ app.include_router(notifications.router)
 app.include_router(reports.router)
 app.include_router(workflows.router)
 app.include_router(executions.router)
+app.include_router(reversals.router)
 
 @app.get("/")
 def health_check():

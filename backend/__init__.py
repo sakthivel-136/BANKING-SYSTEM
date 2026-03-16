@@ -1,0 +1,4 @@
+"""
+SmartBank backend package marker.
+"""
+

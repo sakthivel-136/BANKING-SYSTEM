@@ -8,6 +8,8 @@ import api from "@/services/api"
 export default function ManagerComplaints() {
   const [complaints, setComplaints] = useState<any[]>([])
   const [responseIds, setResponseIds] = useState<Record<string, string>>({})
+  const [reversalAmounts, setReversalAmounts] = useState<Record<string, string>>({})
+  const [reversalReasons, setReversalReasons] = useState<Record<string, string>>({})
 
   useEffect(() => {
     load()
@@ -30,6 +32,34 @@ export default function ManagerComplaints() {
       load()
     } catch (e) {
       alert("Failed to update complaint")
+    }
+  }
+
+  const requestReversal = async (complaint: any) => {
+    const id = complaint.complaint_id as string
+    const amountStr = reversalAmounts[id]
+    const reason = reversalReasons[id] || ""
+    const amount = parseFloat(amountStr)
+
+    if (!amountStr || isNaN(amount) || amount <= 0) {
+      alert("Enter a valid reversal amount.")
+      return
+    }
+
+    try {
+      // For now manager must paste the original transaction id into the reason/description
+      await api.post(`/reversals/from-complaint/${id}`, {
+        transaction_id: complaint.related_transaction_id || complaint.transaction_id || complaint.complaint_id,
+        amount,
+        type: "charge_double",
+        reason,
+      })
+      alert("Reversal request sent to MD.")
+      setReversalAmounts((prev) => ({ ...prev, [id]: "" }))
+      setReversalReasons((prev) => ({ ...prev, [id]: "" }))
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.response?.data?.detail || "Failed to create reversal request.")
     }
   }
 
@@ -93,15 +123,67 @@ export default function ManagerComplaints() {
                      value={responseIds[c.complaint_id] || ""}
                      onChange={(e) => setResponseIds({...responseIds, [c.complaint_id]: e.target.value})}
                   />
-                  <div className="flex gap-2">
-                     <button onClick={() => updateComplaint(c.complaint_id, 'Resolved', true)} className="bg-green-600 text-white text-xs px-4 py-2 rounded shadow-sm hover:bg-green-700 focus:outline-none">Mark Resolved</button>
-                     <button onClick={() => updateComplaint(c.complaint_id, 'In Review', true)} className="bg-blue-600 text-white text-xs px-4 py-2 rounded shadow-sm hover:bg-blue-700 focus:outline-none">Update & Keep In Review</button>
-                     <button 
-                        onClick={() => updateComplaint(c.complaint_id, 'Escalated', false)} 
+                  <div className="flex flex-col gap-3 mt-2">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">
+                          Reversal Amount (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={reversalAmounts[c.complaint_id] || ""}
+                          onChange={(e) =>
+                            setReversalAmounts({ ...reversalAmounts, [c.complaint_id]: e.target.value })
+                          }
+                          className="w-full border rounded-md p-2 text-sm focus:ring-primary focus:border-primary"
+                          placeholder="e.g. 25.00"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">
+                          Reversal Note
+                        </label>
+                        <input
+                          type="text"
+                          value={reversalReasons[c.complaint_id] || ""}
+                          onChange={(e) =>
+                            setReversalReasons({ ...reversalReasons, [c.complaint_id]: e.target.value })
+                          }
+                          className="w-full border rounded-md p-2 text-sm focus:ring-primary focus:border-primary"
+                          placeholder="Why is this reversal needed?"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => requestReversal(c)}
+                        className="mt-1 inline-flex justify-center items-center px-4 py-2 bg-amber-600 text-white text-xs font-semibold rounded shadow-sm hover:bg-amber-700"
+                      >
+                        Request Reversal (Send to MD)
+                      </button>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => updateComplaint(c.complaint_id, "Resolved", true)}
+                        className="bg-green-600 text-white text-xs px-4 py-2 rounded shadow-sm hover:bg-green-700 focus:outline-none"
+                      >
+                        Mark Resolved
+                      </button>
+                      <button
+                        onClick={() => updateComplaint(c.complaint_id, "In Review", true)}
+                        className="bg-blue-600 text-white text-xs px-4 py-2 rounded shadow-sm hover:bg-blue-700 focus:outline-none"
+                      >
+                        Update & Keep In Review
+                      </button>
+                      <button
+                        onClick={() => updateComplaint(c.complaint_id, "Escalated", false)}
                         className="bg-red-50 text-red-600 border border-red-200 text-xs px-4 py-2 rounded shadow-sm hover:bg-red-100 focus:outline-none ml-auto"
                       >
                         Escalate to MD
                       </button>
+                    </div>
                   </div>
                 </div>
               )}
