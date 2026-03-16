@@ -254,13 +254,31 @@ def verify_password(payload: dict, user: Dict[str, Any] = Depends(get_current_us
 @router.get("/test-connectivity")
 def test_connectivity(email: str):
     """Diagnostic endpoint to test email connectivity directly in the browser."""
-    from services.email import SMTP_HOST, SMTP_PORT
+    from services.email import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL
+    results = {
+        "diagnostic_step": "init",
+        "config": {
+            "host": SMTP_HOST,
+            "port": SMTP_PORT,
+            "user": SMTP_USER,
+            "from": FROM_EMAIL,
+            "has_password": bool(SMTP_PASSWORD)
+        }
+    }
     try:
+        results["diagnostic_step"] = "attempting_send"
         send_email(
             email,
             "SmartBank — Connectivity Test",
-            "<p>If you see this, your email system is working perfectly!</p>"
+            f"<p>Diagnostic test for {email}. If you see this, connectivity is OK!</p>"
         )
-        return {"status": "success", "message": f"Test email successfully initiated for {email}. Please check your inbox and spam folder."}
+        results["status"] = "success"
+        results["message"] = f"Test email successfully sent to {email}"
+        return results
     except Exception as e:
-        return {"status": "error", "detail": str(e), "host": SMTP_HOST, "port": SMTP_PORT}
+        import traceback
+        results["status"] = "error"
+        results["error_type"] = type(e).__name__
+        results["error_detail"] = str(e)
+        results["traceback"] = traceback.format_exc()
+        return results
