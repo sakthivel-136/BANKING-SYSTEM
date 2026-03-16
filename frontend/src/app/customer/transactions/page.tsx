@@ -141,6 +141,26 @@ export default function CustomerTransactions() {
     }
   }
 
+  const handleRequestReversal = async (txn: any) => {
+    const reason = prompt("Please enter the reason for reversal (e.g., Wrong account transfer):")
+    if (reason === null) return // Cancelled
+    if (!reason.trim()) {
+      alert("Reason is required.")
+      return
+    }
+
+    try {
+      await api.post("/reversals/request", {
+        transaction_id: txn.transaction_id,
+        amount: txn.amount,
+        reason: reason
+      })
+      alert("Reversal request submitted. It will be verified by a manager and then approved by the MD.")
+    } catch (e: any) {
+      alert(e.response?.data?.detail || "Failed to submit reversal request.")
+    }
+  }
+
   return (
     <>
 
@@ -228,6 +248,7 @@ export default function CustomerTransactions() {
                     <th className="px-6 py-4 font-semibold tracking-wider">Ref / Receiver</th>
                     <th className="px-6 py-4 font-semibold tracking-wider text-right">Amount (₹)</th>
                     <th className="px-6 py-4 font-semibold tracking-wider text-right">Balance After (₹)</th>
+                    <th className="px-6 py-4 font-semibold tracking-wider text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -251,6 +272,14 @@ export default function CustomerTransactions() {
                       </td>
                       <td className="px-6 py-4 text-right font-medium text-gray-600">
                         {txn.balance_after.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button 
+                          onClick={() => handleRequestReversal(txn)}
+                          className="text-[10px] font-bold uppercase py-1 px-2 text-rose-600 border border-rose-200 hover:bg-rose-50 rounded bg-white transition"
+                        >
+                          Request Reversal
+                        </button>
                       </td>
                     </tr>
                   ))}

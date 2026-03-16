@@ -12,6 +12,7 @@ export default function ManagerApprovals() {
   const [accountRequests, setAccountRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
+  const [reversals, setReversals] = useState<any[]>([])
 
   useEffect(() => {
     load()
@@ -20,16 +21,32 @@ export default function ManagerApprovals() {
   const load = async () => {
     try {
       setLoading(true)
-      const [tRes, aRes] = await Promise.all([
+      const [tRes, aRes, rRes] = await Promise.all([
         api.get("/transactions/pending-transfers"),
-        api.get("/accounts/activity-pending")
+        api.get("/accounts/activity-pending"),
+        api.get("/reversals/all")
       ])
       setTransfers(tRes.data)
       setAccountRequests(aRes.data)
+      setReversals(rRes.data)
     } catch (e) {
       console.error(e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleVerifyReversal = async (id: string) => {
+    const password = prompt("Manager verification required. Enter your password to escalate:")
+    if (password === null) return
+    
+    try {
+      await api.post("/auth/verify-password", { password })
+      await api.post(`/reversals/${id}/verify`)
+      alert("Reversal verified and escalated to MD.")
+      load()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || "Verification failed.")
     }
   }
 
@@ -50,7 +67,9 @@ export default function ManagerApprovals() {
     try {
       await api.post(`/accounts/activity-approve/${id}`)
       if (actionType === "deactivate") {
-        alert("Deactivation request forwarded to MD for final approval.")
+        alert("🚀 Request successfully forwarded to MD for final review.")
+      } else {
+        alert("✅ Request approved successfully.")
       }
       load()
     } catch (e) {
@@ -198,6 +217,62 @@ export default function ManagerApprovals() {
                   ))}
                   {accountRequests.length === 0 && (
                     <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400 italic">No pending account requests</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+            {/* SECTION 3: REVERSAL VERIFICATION */}
+        <Card className="shadow-sm border-0 ring-1 ring-gray-200">
+          <CardHeader className="bg-white border-b border-gray-100">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ArrowRightLeft className="w-5 h-5 text-gray-400" /> Reversal Verification
+            </CardTitle>
+            <CardDescription>Verify and escalate customer-requested reversals to MD.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-500 uppercase bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-4 font-semibold">Customer</th>
+                    <th className="px-6 py-4 font-semibold">Amount</th>
+                    <th className="px-6 py-4 font-semibold">Reason</th>
+                    <th className="px-6 py-4 font-semibold">Status</th>
+                    <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {reversals.map((rev) => (
+                    <tr key={rev.reversal_id} className="hover:bg-gray-50 bg-white">
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-gray-900">{rev.accounts?.customer_profile?.full_name}</p>
+                        <p className="text-[10px] font-mono text-gray-400">ACC: {rev.accounts?.account_number}</p>
+                      </td>
+                      <td className="px-6 py-4 font-bold text-gray-900">₹{rev.amount.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-gray-600 text-xs italic max-w-xs">{rev.reason}</td>
+                      <td className="px-6 py-4">
+                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                           rev.created_by_manager_id ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
+                         }`}>
+                           {rev.created_by_manager_id ? 'Verified & Escalated' : 'Needs Verification'}
+                         </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {!rev.created_by_manager_id && (
+                          <button 
+                            onClick={() => handleVerifyReversal(rev.reversal_id)}
+                            className="px-4 py-1.5 text-white bg-amber-500 hover:bg-amber-600 rounded-md transition text-xs font-bold"
+                          >
+                            Verify & Escalate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {reversals.length === 0 && (
+                    <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400 italic">No reversal requests</td></tr>
                   )}
                 </tbody>
               </table>

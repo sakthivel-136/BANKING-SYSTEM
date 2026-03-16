@@ -16,11 +16,7 @@ FROM_EMAIL    = os.getenv("EMAIL_FROM")
 
 
 def _mask_account(acc: Any) -> str:
-    """Helper to mask account number safely for the type checker."""
-    if not acc:
-        return "N/A"
     s = str(acc)
-    # Manual index-based retrieval to bypass slicing errors in picky type checkers
     n = len(s)
     if n <= 4:
         return s
@@ -452,6 +448,46 @@ def send_profile_edit_charge_notice(
       </div>
       <div style="background:#f8fafc;padding:12px 24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0">
         This is an automated message from SmartBank. Do not reply to this email.
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+def send_reversal_request_notice(customer_name: str, to_email: str, account_number: str, amount: float, reason: str):
+    subject = "🔄 Reversal Request Received — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+      </div>
+      <div style="padding:24px">
+        <p>Dear <b>{customer_name}</b>,</p>
+        <p>We have received your request to reverse a transaction of <b>₹{amount:,.2f}</b> on your account ending in <b>••••{_mask_account(account_number)}</b>.</p>
+        <p><b>Reason:</b> {reason}</p>
+        <p>Your request is currently being verified by our management team. We will notify you once it has been processed.</p>
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
+
+def send_reversal_status_update(customer_name: str, to_email: str, account_number: str, amount: float, status: str, new_balance: Optional[float] = None):
+    subject = f"🔄 Reversal Request {status.capitalize()} — SmartBank"
+    color = "#166534" if status == "approved" else "#991b1b"
+    status_text = "Approved & Processed" if status == "approved" else "Rejected"
+    
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:20px 24px">
+        <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
+      </div>
+      <div style="padding:24px">
+        <p>Dear <b>{customer_name}</b>,</p>
+        <div style="background:{'#f0fdf4' if status=='approved' else '#fef2f2'};border:1px solid {'#bbf7d0' if status=='approved' else '#fecaca'};border-radius:8px;padding:14px 16px;margin:16px 0">
+          <p style="margin:0;color:{color};font-weight:600">Reversal {status_text}</p>
+          <p style="margin:6px 0 0;color:{color};font-size:13px">
+            Your reversal request for <b>₹{amount:,.2f}</b> has been {status}.
+          </p>
+        </div>
+        {f'<p>Your new account balance is <b>₹{new_balance:,.2f}</b>.</p>' if new_balance is not None else ''}
       </div>
     </div>
     """

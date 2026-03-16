@@ -13,12 +13,19 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         response = supabase.auth.get_user(token)
         if not response or not response.user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        meta = response.user.user_metadata or {}
+        # Try 'roles' first (plural), then 'role' (singular), default to 'customer'
+        raw_role = meta.get('roles') or meta.get('role') or 'customer'
+        # Normalize to lowercase for consistent comparisons
+        role = str(raw_role).lower()
         return {
             "id": response.user.id,
             "email": response.user.email,
-            "user_metadata": response.user.user_metadata,
-            "role": response.user.user_metadata.get('roles', 'customer')
+            "user_metadata": meta,
+            "role": role
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
@@ -227,3 +234,20 @@ def send_customer_edit_otp(payload: dict, user: Dict[str, Any] = Depends(require
     )
     print(f"DEBUG: Profile-edit OTP for customer {customer_id} is {otp}")
     return {"message": "OTP sent to customer's registered email"}
+@router.post("/verify-password")
+def verify_password(payload: dict, user: Dict[str, Any] = Depends(get_current_user)):
+    """Verifies the current user's password without changing the session."""
+    password = payload.get("password")
+    if not password:
+        raise HTTPException(status_code=400, detail="Password required")
+    
+    try:
+        # Supabase doesn't have a direct 'check password' without signing in.
+        # We try to sign in with the current user's email and provided password.
+        supabase_anon.auth.sign_in_with_password({
+            "email": user["email"],
+            "password": password
+        })
+        return {"status": "verified"}
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid password")

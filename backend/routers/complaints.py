@@ -19,13 +19,24 @@ def create_complaint(complaint: ComplaintCreate, user: Dict[str, Any] = Depends(
 @router.get("/")
 def get_complaints(user: Dict[str, Any] = Depends(get_current_user)):
     role = user.get("role", "customer")
-    if role == "customer":
-        res = supabase.table("complaints").select("*").eq("customer_id", user["id"]).order("created_at", desc=True).execute()
-        return res.data
-    else:
-        # Managers / MD / Admin see all
-        res = supabase.table("complaints").select("*, customer_profile(full_name)").order("created_at", desc=True).execute()
-        return res.data
+    try:
+        if role == "customer":
+            res = supabase.table("complaints").select("*").eq("customer_id", user["id"]).order("created_at", desc=True).execute()
+            return res.data or []
+        else:
+            # Managers / MD / Admin see all — include customer profile details
+            try:
+                res = supabase.table("complaints").select(
+                    "*, customer_profile:customer_id(full_name, email, phone_number)"
+                ).order("created_at", desc=True).execute()
+                return res.data or []
+            except Exception:
+                # Fallback without join
+                res = supabase.table("complaints").select("*").order("created_at", desc=True).execute()
+                return res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch complaints: {str(e)}")
+
 
 @router.put("/{complaint_id}")
 def update_complaint(complaint_id: str, payload: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):

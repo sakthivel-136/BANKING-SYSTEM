@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { AlertTriangle, CheckSquare, XSquare, Loader2, Shield, AlertCircle, Snowflake, CheckCircle } from "lucide-react"
+import { AlertTriangle, CheckSquare, XSquare, Loader2, Shield, AlertCircle, Snowflake, CheckCircle, RotateCcw } from "lucide-react"
 import api from "@/services/api"
 
 export default function MDEscalations() {
@@ -22,8 +22,10 @@ export default function MDEscalations() {
       setLoading(true)
       const [deactRes, alertsRes] = await Promise.all([
         api.get("/accounts/activity-pending-md"),
-        api.get("/accounts/escalated-alerts").catch(() => ({ data: [] }))
+        api.get("/accounts/escalated-alerts").catch((e: any) => { console.error("escalated-alerts error:", e); return { data: [] } })
       ])
+      console.log("MD escalations - deactivations:", deactRes.data)
+      console.log("MD escalations - balance alerts:", alertsRes.data)
       setDeactivations(deactRes.data)
       setBalanceAlerts(alertsRes.data)
     } catch (e) {
@@ -73,17 +75,21 @@ export default function MDEscalations() {
     }
   }
 
-  const handleAlertResolve = async (alertId: string) => {
+  const handleAlertRevert = async (alertId: string) => {
+    const note = prompt("Add a note for the manager (optional):")
+    if (note === null) return // cancelled
     setProcessingId(alertId)
     try {
-      await api.post(`/accounts/alert-resolve/${alertId}`)
+      const res = await api.post(`/accounts/alert-revert/${alertId}`, { note: note || "" })
+      alert(res.data.message)
       load()
     } catch (err: any) {
-      alert(err.response?.data?.detail || "Failed to resolve.")
+      alert(err.response?.data?.detail || "Failed to revert.")
     } finally {
       setProcessingId(null)
     }
   }
+
 
   return (
     <DashboardLayout role="md">
@@ -244,11 +250,11 @@ export default function MDEscalations() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Balance</p>
-                      <p className="text-sm font-bold text-red-600">₹{Number(alert.balance||0).toLocaleString("en-IN")}</p>
+                      <p className="text-sm font-bold text-red-600">₹{Number(acc.balance ?? alert.balance ?? 0).toLocaleString("en-IN")}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Threshold</p>
-                      <p className="text-sm">₹{Number(alert.threshold||1000).toLocaleString("en-IN")}</p>
+                      <p className="text-sm">₹{Number(alert.threshold ?? 1000).toLocaleString("en-IN")}</p>
                     </div>
                   </div>
                   {alert.escalation_message && (
@@ -267,11 +273,12 @@ export default function MDEscalations() {
                       Freeze Account
                     </button>
                     <button
-                      onClick={() => handleAlertResolve(alert.alert_id)}
+                      onClick={() => handleAlertRevert(alert.alert_id)}
                       disabled={!!processingId}
-                      className="flex items-center gap-1.5 bg-white border border-gray-300 text-gray-700 text-xs font-medium px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition"
+                      className="flex items-center gap-1.5 bg-amber-500 text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-amber-600 disabled:opacity-50 transition"
                     >
-                      <CheckCircle className="w-3.5 h-3.5 text-green-500" /> Mark Resolved
+                      {processingId === alert.alert_id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                      Revert to Manager
                     </button>
                   </div>
                 </CardContent>

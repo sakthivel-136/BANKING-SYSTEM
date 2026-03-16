@@ -53,7 +53,7 @@ def _deduct_md_report_charge(user_id: str):
             acc = md_acc_res.data[0]
             apply_charge(acc["account_id"], acc["account_number"], 2.50, "MD Report Download Charge")
     except Exception as e:
-        print(f"⚠️ Warning: Failed to deduct MD report charge: {e}")
+        print(f"💰 MD Report Charge: Failed to deduct ₹2.50. Error: {e}")
 
 @router.get("/monthly-download")
 def download_monthly_report(user: Dict[str, Any] = Depends(get_current_user)):

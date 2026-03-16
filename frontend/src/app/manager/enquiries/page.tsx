@@ -18,13 +18,38 @@ export default function ManagerEnquiriesPage() {
 
   useEffect(() => {
     loadEnquiries()
+    const interval = setInterval(loadEnquiries, 15000) // auto-refresh every 15s
+    return () => clearInterval(interval)
   }, [])
+
 
   const loadEnquiries = async () => {
     try {
       const res = await api.get("/enquiries")
-      setEnquiries(res.data)
-      setFilteredEnquiries(res.data)
+      // Group by customer_id to create thread-like view
+      const grouped: Record<string, any> = {}
+      res.data.forEach((enq: any) => {
+        const cid = enq.customer_id
+        if (!grouped[cid]) {
+           grouped[cid] = {
+              customer_id: cid,
+              customer_name: enq.customer_profile?.full_name || 'Customer',
+              last_updated: enq.created_at,
+              status: enq.status,
+              messages: []
+           }
+        }
+        grouped[cid].messages.push(enq)
+        if (new Date(enq.created_at) > new Date(grouped[cid].last_updated)) {
+           grouped[cid].last_updated = enq.created_at
+           grouped[cid].status = enq.status
+        }
+      })
+      const groupedArray = Object.values(grouped).sort((a: any, b: any) => 
+         new Date(b.last_updated).getTime() - new Date(a.last_updated).getTime()
+      )
+      setEnquiries(groupedArray)
+      setFilteredEnquiries(groupedArray)
     } catch (e) {
       console.error(e)
     } finally {
@@ -38,8 +63,8 @@ export default function ManagerEnquiriesPage() {
       return
     }
     const filtered = enquiries.filter(e => 
-      e.message?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.customer_profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      e.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.messages.some((m: any) => m.message?.toLowerCase().includes(searchTerm.toLowerCase()))
     )
     setFilteredEnquiries(filtered)
   }
@@ -49,13 +74,19 @@ export default function ManagerEnquiriesPage() {
     if (!selectedEnquiry || !response.trim()) return
     setIsSubmitting(true)
     try {
-      await api.put(`/enquiries/${selectedEnquiry.enquiry_id}`, { response })
+      // Answer the LATEST unanswered (Pending) message in the thread
+      const messages = selectedEnquiry.messages || []
+      const pendingMsg = messages.find((m: any) => m.status === 'Pending') || messages[messages.length - 1]
+      if (!pendingMsg?.enquiry_id) {
+        alert("No message to reply to.")
+        return
+      }
+      await api.put(`/enquiries/${pendingMsg.enquiry_id}`, { response })
       setResponse("")
-      setSelectedEnquiry(null)
-      loadEnquiries()
-      alert("Response sent successfully!")
-    } catch (err) {
-      alert("Failed to send response")
+      await loadEnquiries()
+      alert("Response sent successfully! ✅")
+    } catch (err: any) {
+      alert("Failed to send response: " + (err.response?.data?.detail || err.message))
     } finally {
       setIsSubmitting(false)
     }
@@ -95,11 +126,16 @@ export default function ManagerEnquiriesPage() {
         <div className="lg:col-span-1 space-y-4 max-h-[calc(100vh-250px)] overflow-y-auto pr-2">
           {loading ? (
             <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
-          ) : filteredEnquiries.map((enq) => (
+          ) : filteredEnquiries.map((thread) => (
             <Card 
-              key={enq.enquiry_id} 
-              className={`cursor-pointer transition-all hover:shadow-md ${selectedEnquiry?.enquiry_id === enq.enquiry_id ? 'ring-2 ring-primary border-transparent' : 'border-gray-100'}`}
-              onClick={() => { setSelectedEnquiry(enq); setResponse(enq.response || ""); }}
+              key={thread.customer_id} 
+              className={`cursor-pointer transition-all hover:shadow-md ${selectedEnquiry?.customer_id === thread.customer_id ? 'ring-2 ring-primary border-transparent' : 'border-gray-100'}`}
+              onClick={() => { 
+                setSelectedEnquiry(thread); 
+                // Set response based on latest unanswered message if possible
+                const lastMsg = thread.messages.find((m: any) => m.status === 'Pending') || thread.messages[0]
+                setResponse(lastMsg?.response || ""); 
+              }}
             >
               <CardContent className="p-4">
                 <div className="flex justify-between items-start mb-2">
@@ -108,15 +144,16 @@ export default function ManagerEnquiriesPage() {
                       <User className="w-4 h-4 text-primary" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-gray-900">{enq.customer_profile?.full_name || 'Customer'}</p>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-widest">{format(new Date(enq.created_at), "MMM d, h:mm a")}</p>
+                      <p className="text-sm font-bold text-gray-900">{thread.customer_name}</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-widest">{format(new Date(thread.last_updated), "MMM d, h:mm a")}</p>
                     </div>
                   </div>
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${enq.status === 'Answered' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {enq.status}
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${thread.status === 'Answered' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {thread.status}
                   </span>
                 </div>
-                <p className="text-sm text-gray-600 line-clamp-2">{enq.message}</p>
+                <p className="text-sm text-gray-600 line-clamp-1">{thread.messages[0]?.message}</p>
+                <p className="text-[10px] text-gray-400 mt-1">{thread.messages.length} messages in conversation</p>
               </CardContent>
             </Card>
           ))}
@@ -135,13 +172,16 @@ export default function ManagerEnquiriesPage() {
                   <CardTitle className="text-lg flex items-center justify-between">
                      <div className="flex flex-col">
                         <span>Chat Thread</span>
-                        <span className="text-xs font-normal text-gray-400 mt-1">TICKET #{selectedEnquiry.enquiry_id.substring(0,8)}</span>
+                         <span className="text-xs font-normal text-gray-400 mt-1">CUSTOMER #{selectedEnquiry.customer_id?.substring(0,8)?.toUpperCase()}</span>
                      </div>
                      <button
                         onClick={async () => {
                            if (!confirm("End this chat? It will be archived and removed from your queue.")) return;
                            try {
-                              await api.put(`/enquiries/${selectedEnquiry.enquiry_id}/close`);
+                              // Close ALL enquiries for this customer
+                              await Promise.all(selectedEnquiry.messages.map((m: any) => 
+                                 api.put(`/enquiries/${m.enquiry_id}/close`)
+                              ));
                               setSelectedEnquiry(null);
                               loadEnquiries();
                            } catch (err: any) {
@@ -154,24 +194,28 @@ export default function ManagerEnquiriesPage() {
                      </button>
                   </CardTitle>
                </CardHeader>
-               <CardContent className="flex-1 flex flex-col p-6 space-y-6 overflow-y-auto">
-                  {/* Customer Message */}
-                  <div className="flex flex-col items-start space-y-2">
-                    <div className="bg-white border text-gray-800 p-4 rounded-2xl rounded-tl-none max-w-[85%] shadow-sm relative">
-                        <p className="text-sm leading-relaxed">{selectedEnquiry.message}</p>
-                    </div>
-                    <span className="text-[10px] text-gray-400 font-medium ml-1">Customer • {format(new Date(selectedEnquiry.created_at), "h:mm a")}</span>
-                  </div>
-
-                  {/* Previous Response if any */}
-                  {selectedEnquiry.response && (
-                    <div className="flex flex-col items-end space-y-2">
-                      <div className="bg-primary text-white p-4 rounded-2xl rounded-tr-none max-w-[85%] shadow-md">
-                          <p className="text-sm leading-relaxed">{selectedEnquiry.response}</p>
+               <CardContent className="flex-1 flex flex-col p-6 space-y-4 overflow-y-auto">
+                  {selectedEnquiry.messages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((m: any, i: number) => (
+                    <div key={i} className="space-y-4">
+                      {/* Customer Message */}
+                      <div className="flex flex-col items-start space-y-2">
+                        <div className="bg-white border text-gray-800 p-4 rounded-2xl rounded-tl-none max-w-[85%] shadow-sm relative">
+                            <p className="text-sm leading-relaxed">{m.message}</p>
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-medium ml-1">Customer • {format(new Date(m.created_at), "h:mm a")}</span>
                       </div>
-                      <span className="text-[10px] text-gray-400 font-medium mr-1">You • {selectedEnquiry.status === 'Answered' ? 'Sent' : 'Draft'}</span>
+
+                      {/* Manager Response */}
+                      {m.response && (
+                        <div className="flex flex-col items-end space-y-2">
+                          <div className="bg-primary text-white p-4 rounded-2xl rounded-tr-none max-w-[85%] shadow-md">
+                              <p className="text-sm leading-relaxed">{m.response}</p>
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-medium mr-1">You • {m.status === 'Answered' ? 'Sent' : 'Draft'}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                </CardContent>
                <div className="p-6 bg-white border-t border-gray-100 mt-auto">
                   <form onSubmit={handleAnswer} className="relative">
@@ -187,6 +231,23 @@ export default function ManagerEnquiriesPage() {
                       type="submit"
                       disabled={isSubmitting || !response.trim()}
                       className="absolute right-4 bottom-4 p-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition shadow-lg shadow-primary/20 disabled:opacity-50"
+                      onClick={async (e) => {
+                         e.preventDefault();
+                         if (!response.trim() || !selectedEnquiry) return;
+                         setIsSubmitting(true);
+                         try {
+                            // Answer the LATEST unanswered enquiry
+                            const lastPending = selectedEnquiry.messages.find((m: any) => m.status === 'Pending') || selectedEnquiry.messages[0];
+                            await api.put(`/enquiries/${lastPending.enquiry_id}`, { response });
+                            setResponse("");
+                            loadEnquiries();
+                            alert("Response sent successfully!");
+                         } catch (err) {
+                            alert("Failed to send response");
+                         } finally {
+                            setIsSubmitting(false);
+                         }
+                      }}
                     >
                       {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                     </button>

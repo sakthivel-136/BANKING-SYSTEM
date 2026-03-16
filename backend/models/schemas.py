@@ -90,12 +90,13 @@ class ComplaintBase(BaseModel):
     description: str
 
 class ComplaintCreate(ComplaintBase):
-    pass
+    related_transaction_id: Optional[UUID] = None
 
 class Complaint(ComplaintBase):
     complaint_id: UUID
     customer_id: UUID
     status: str
+    related_transaction_id: Optional[UUID] = None
     manager_response: Optional[str] = None
     created_at: datetime
     class Config:

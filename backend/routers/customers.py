@@ -224,11 +224,11 @@ def list_pending_profile_updates(user: Dict[str, Any] = Depends(get_current_user
     
     if user.get("role") == "md":
         # MD sees both pending_approval and pending_md
-        res1 = supabase.table("profile_update_requests").select("*, customer_profile(full_name, email)").eq("status", "pending_approval").execute()
-        res2 = supabase.table("profile_update_requests").select("*, customer_profile(full_name, email)").eq("status", "pending_md").execute()
+        res1 = supabase.table("profile_update_requests").select("*, customer_profile:customer_id(full_name, email)").eq("status", "pending_approval").execute()
+        res2 = supabase.table("profile_update_requests").select("*, customer_profile:customer_id(full_name, email)").eq("status", "pending_md").execute()
         return (res1.data or []) + (res2.data or [])
     else:
-        res = supabase.table("profile_update_requests").select("*, customer_profile(full_name, email)").eq("status", "pending_approval").execute()
+        res = supabase.table("profile_update_requests").select("*, customer_profile:customer_id(full_name, email)").eq("status", "pending_approval").execute()
         return res.data
 
 @router.post("/in-person-update")
@@ -277,6 +277,18 @@ def in_person_profile_update(payload: Dict[str, Any], user: Dict[str, Any] = Dep
     }
     
     supabase.table("profile_update_requests").insert(insert_data).execute()
+
+    # Email customer about the escalation
+    cust_res = supabase.table("customer_profile").select("email, full_name").eq("customer_id", customer_id).execute()
+    if cust_res.data:
+        from services.email import send_email # type: ignore
+        customer = cust_res.data[0]
+        send_email(
+            customer["email"],
+            "SmartBank — Profile Update Escalated to MD",
+            f"<p>Dear {customer['full_name']},</p><p>Your profile update request has been verified by the Manager and is now pending final approval from our MD (Managing Director).</p><p>This is a standard security procedure for in-person updates.</p>"
+        )
+
     return {"message": "Profile update request submitted to MD for approval."}
 
 @router.post("/profile-update-md-approve/{request_id}")

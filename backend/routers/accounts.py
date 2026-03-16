@@ -10,6 +10,7 @@ from services.email import ( # type: ignore
     send_account_unblocked_notice,
     send_account_deactivated_notice,
 )
+from datetime import datetime, timezone
 import httpx # type: ignore
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
@@ -206,10 +207,16 @@ def approve_activity(request_id: str, user: Dict[str, Any] = Depends(get_current
     
     # If deactivation → forward to MD, don't directly approve
     if req["action_type"] == "deactivate":
-        supabase.table("account_activity_requests").update({
-            "status": "pending_md",
-            "manager_id": user["id"]
-        }).eq("request_id", request_id).execute()
+        try:
+            supabase.table("account_activity_requests").update({
+                "status": "pending_md",
+                "manager_id": user["id"]
+            }).eq("request_id", request_id).execute()
+        except Exception:
+            # Fallback: manager_id column may not exist yet (before migration 011)
+            supabase.table("account_activity_requests").update({
+                "status": "pending_md"
+            }).eq("request_id", request_id).execute()
         return {"message": "Deactivation request forwarded to MD for final approval."}
     
     # For unfreeze/unblock → directly approve
@@ -321,8 +328,8 @@ def md_reject_deactivation(request_id: str, user: Dict[str, Any] = Depends(get_c
 def list_pending_activities(user: Dict[str, Any] = Depends(get_current_user)):
     if user.get("role") not in ["manager", "md"]:
         raise HTTPException(status_code=403, detail="Forbidden")
-    # Manager sees pending_approval (unfreeze/unblock) + pending_manager (deactivation to review)
-    res1 = supabase.table("account_activity_requests").select("*, accounts(account_number, customer_profile(full_name))").eq("status", "pending_approval").execute()
+    # Manager sees pending_approval (unfreeze/unblock)
+    res1 = supabase.table("account_activity_requests").select("*, accounts(account_number, customer_profile:customer_id(full_name))").eq("status", "pending_approval").execute()
     return res1.data or []
 
 @router.get("/activity-pending-md")
@@ -351,7 +358,8 @@ def get_low_balance_alerts(user: Dict[str, Any] = Depends(get_current_user)):
     acc_res = supabase.table("accounts").select(
         "account_id, account_number, account_type, balance, status, customer_profile:customer_id(full_name, email)"
     ).eq("status", "active").execute()
-    accounts = acc_res.data or []
+    # Exclude INTERNAL accounts (like BANK-CHARGES-0001) — they are bank-owned, not customer accounts
+    accounts = [a for a in (acc_res.data or []) if str(a.get("account_type", "")).lower() != "internal"]
 
     # ── Step 3: Fetch existing DB alert records so we can carry escalation state ──
     db_alerts: dict = {}
@@ -370,18 +378,21 @@ def get_low_balance_alerts(user: Dict[str, Any] = Depends(get_current_user)):
         acc_type = (acc.get("account_type") or "savings").lower()
         threshold = config_map.get(acc_type, default_threshold)
         balance = float(acc.get("balance") or 0)
+        
+        acc_id = str(acc["account_id"])
+        db = db_alerts.get(acc_id)
+        
         if balance < threshold:
-            acc_id = str(acc["account_id"])
-            db = db_alerts.get(acc_id, {})
+            # Should have an alert
             alerts.append({
-                "alert_id": db.get("alert_id", acc_id),   # use DB alert_id if exists, else use account_id as key
+                "alert_id": db.get("alert_id", acc_id) if db else acc_id,
                 "account_id": acc_id,
                 "balance": balance,
                 "threshold": threshold,
-                "status": db.get("status", "open"),
-                "escalation_message": db.get("escalation_message"),
-                "manager_note": db.get("manager_note"),
-                "created_at": db.get("created_at", ""),
+                "status": db.get("status", "open") if db else "open",
+                "escalation_message": db.get("escalation_message") if db else None,
+                "manager_note": db.get("manager_note") if db else None,
+                "created_at": db.get("created_at", "") if db else "",
                 "accounts": {
                     "account_number": acc["account_number"],
                     "account_type": acc["account_type"],
@@ -390,6 +401,17 @@ def get_low_balance_alerts(user: Dict[str, Any] = Depends(get_current_user)):
                     "customer_profile": acc.get("customer_profile")
                 }
             })
+        elif db:
+            # Balance reached threshold, but DB still has it open/escalated?
+            # We should probably resolve it here if not already handled by transaction logic.
+            # But get_low_balance_alerts is a GET, we shouldn't mutate state here ideally.
+            # Still, for a "not functioning properly" fix, we can trigger a lazy resolution.
+            try:
+                supabase.table("low_balance_alerts").update({
+                    "status": "resolved",
+                    "resolved_at": datetime.now(timezone.utc).isoformat()
+                }).eq("alert_id", db["alert_id"]).execute()
+            except Exception: pass
 
     return alerts
 
@@ -403,6 +425,21 @@ def resolve_alert(alert_id: str, user: Dict[str, Any] = Depends(get_current_user
         raise HTTPException(status_code=400, detail=str(e))
     return {"message": "Alert resolved."}
 
+@router.post("/alert-revert/{alert_id}")
+def revert_alert_to_manager(alert_id: str, payload: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
+    """MD reverts an escalated alert back to the manager for further action."""
+    if user.get("role") not in ["md", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden — MD only")
+    note = payload.get("note", "").strip() or "Reverted by MD — please review."
+    try:
+        supabase.table("low_balance_alerts").update({
+            "status": "open",
+            "manager_note": f"[REVERTED BY MD]: {note}",
+        }).eq("alert_id", alert_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"message": "Alert reverted to manager successfully."}
+
 @router.post("/alert-escalate/{alert_id}")
 def escalate_alert(alert_id: str, payload: Dict[str, Any], user: Dict[str, Any] = Depends(get_current_user)):
     if user.get("role") not in ["manager", "admin"]:
@@ -411,14 +448,33 @@ def escalate_alert(alert_id: str, payload: Dict[str, Any], user: Dict[str, Any] 
     if not message:
         raise HTTPException(status_code=400, detail="Escalation message is required")
     try:
-        supabase.table("low_balance_alerts").update({
-            "status": "escalated",
-            "escalation_message": message,
-            "manager_note": f"Escalated by manager ID: {user['id']}"
-        }).eq("alert_id", alert_id).execute()
+        # First, ensure the alert record exists in the DB
+        existing = supabase.table("low_balance_alerts").select("alert_id").eq("alert_id", alert_id).execute()
+        if not existing.data:
+            # The alert was dynamically computed — we need account_id from the alert_id
+            # alert_id might directly be account_id when alerts don't exist in DB
+            supabase.table("low_balance_alerts").insert({
+                "alert_id": alert_id,
+                "account_id": alert_id,  # alert_id == account_id when computed dynamically
+                "status": "escalated",
+                "escalation_message": message,
+                "manager_note": f"Escalated by manager ID: {user['id']}"
+            }).execute()
+        else:
+            supabase.table("low_balance_alerts").update({
+                "status": "escalated",
+                "escalation_message": message,
+                "manager_note": f"Escalated by manager ID: {user['id']}"
+            }).eq("alert_id", alert_id).execute()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"message": "Alert escalated to MD."}
+        err_str = str(e)
+        if "schema cache" in err_str.lower() or "not found" in err_str.lower():
+            raise HTTPException(
+                status_code=503,
+                detail="The alerts system is not set up yet. Please run database migration 011 first."
+            )
+        raise HTTPException(status_code=400, detail=err_str)
+    return {"message": "Alert escalated to MD successfully."}
 
 @router.post("/alert-freeze/{alert_id}")
 def freeze_from_alert(alert_id: str, user: Dict[str, Any] = Depends(get_current_user)):
@@ -461,16 +517,42 @@ def freeze_from_alert(alert_id: str, user: Dict[str, Any] = Depends(get_current_
 @router.get("/escalated-alerts")
 def get_escalated_alerts(user: Dict[str, Any] = Depends(get_current_user)):
     """MD-only: view all alerts escalated by managers."""
-    if user.get("role") not in ["md"]:
+    if user.get("role") not in ["md", "admin"]:
         raise HTTPException(status_code=403, detail="Forbidden — MD only")
     try:
+        # Fetch raw alerts without joins (most reliable approach)
         res = supabase.table("low_balance_alerts").select(
-            "*, accounts(account_number, account_type, balance, customer_profile:customer_id(full_name, email))"
+            "alert_id, account_id, status, escalation_message, manager_note, created_at"
         ).eq("status", "escalated").order("created_at", desc=True).execute()
-        return res.data or []
+        raw: List[Dict] = res.data or []
+        print(f"DEBUG escalated-alerts raw count: {len(raw)}")
+
+        # Manually enrich each alert with account and customer profile
+        enriched: List[Dict] = []
+        for a in raw:
+            acc_data: Dict[str, Any] = {}
+            try:
+                acc_res = supabase.table("accounts").select(
+                    "account_number, account_type, balance, customer_profile:customer_id(full_name, email)"
+                ).eq("account_id", a["account_id"]).execute()
+                acc_data = acc_res.data[0] if acc_res.data else {}
+            except Exception as acc_err:
+                print(f"DEBUG: enrichment failed for alert {a.get('alert_id')}: {acc_err}")
+            enriched.append({
+                "alert_id": a.get("alert_id"),
+                "account_id": a.get("account_id"),
+                "status": a.get("status"),
+                "escalation_message": a.get("escalation_message"),
+                "manager_note": a.get("manager_note"),
+                "created_at": a.get("created_at"),
+                "accounts": acc_data,
+            })
+        return enriched
     except Exception as e:
-        print(f"DEBUG: escalated alerts fetch failed: {e}")
-        return []
+        print(f"DEBUG: escalated-alerts failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch escalated alerts: {str(e)}")
+
+
 
 
 # ── Manual trigger for monthly charges (Manager / Admin) ─────────────────────
@@ -483,10 +565,26 @@ def trigger_monthly_charges(user: Dict[str, Any] = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Forbidden — Managers only")
     try:
         from services.banking import apply_monthly_charges  # type: ignore
-        result = apply_monthly_charges(dry_run=False)
+        result = apply_monthly_charges(manager_id=user["id"], dry_run=False)
         return {"message": "Monthly charges applied successfully!", "summary": result}
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Monthly charges failed: {str(e)}")
+
+
+@router.post("/reverse-monthly-charges")
+def reverse_monthly_charges(user: Dict[str, Any] = Depends(get_current_user)):
+    """Reverses the last batch of monthly charges for the current month."""
+    if user.get("role") not in ["manager", "admin", "md"]:
+        raise HTTPException(status_code=403, detail="Forbidden — Managers only")
+    
+    try:
+        from services.banking import reverse_last_monthly_batch # type: ignore
+        result = reverse_last_monthly_batch()
+        return {"message": "Monthly charges reversed successfully!", "count": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reversal failed: {str(e)}")
 
 
 @router.post("/preview-monthly-charges")
@@ -496,7 +594,18 @@ def preview_monthly_charges(user: Dict[str, Any] = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Forbidden — Managers only")
     try:
         from services.banking import apply_monthly_charges  # type: ignore
-        result = apply_monthly_charges(dry_run=True)
+        result = apply_monthly_charges(manager_id=user["id"], dry_run=True)
         return {"message": "Preview only — no charges were applied.", "preview": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preview failed: {str(e)}")
+
+@router.get("/monthly-charges-status")
+def get_monthly_charges_status(user: Dict[str, Any] = Depends(get_current_user)):
+    """Check if monthly charges have already been applied for the current month."""
+    if user.get("role") not in ["manager", "admin", "md"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    now = datetime.now()
+    res = supabase.table("monthly_charge_logs").select("*").eq("month", now.month).eq("year", now.year).execute()
+    
+    return {"applied": len(res.data) > 0, "log": res.data[0] if res.data else None}

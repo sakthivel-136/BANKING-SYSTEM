@@ -44,17 +44,6 @@ export default function ManagerAlerts() {
     }
   }
 
-  const handleResolve = async (alertId: string) => {
-    setProcessingId(alertId)
-    try {
-      await api.post(`/accounts/alert-resolve/${alertId}`)
-      load()
-    } catch (err: any) {
-      alert(err.response?.data?.detail || "Failed to resolve.")
-    } finally {
-      setProcessingId(null)
-    }
-  }
 
   const handleEscalateSubmit = async () => {
     if (!escalateAlert || !escalateMsg.trim()) return
@@ -163,13 +152,6 @@ export default function ManagerAlerts() {
                         className="flex items-center gap-1.5 bg-purple-600 text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition"
                       >
                         <ArrowUpCircle className="w-3.5 h-3.5" /> Escalate to MD
-                      </button>
-                      <button
-                        onClick={() => handleResolve(alert.alert_id)}
-                        disabled={!!processingId}
-                        className="flex items-center gap-1.5 bg-white border border-gray-300 text-gray-700 text-xs font-medium px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5 text-green-500" /> Mark Resolved
                       </button>
                     </div>
                   )}

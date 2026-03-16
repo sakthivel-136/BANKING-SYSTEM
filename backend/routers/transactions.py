@@ -30,7 +30,7 @@ def request_operation(op_type: str, req: OperationRequestModel, user: Dict[str, 
          raise HTTPException(status_code=400, detail="Invalid operation type")
          
     # Validate account
-    acc_res = supabase.table("accounts").select("*, customer_profile(email, full_name)").eq("account_id", req.account_id).execute()
+    acc_res = supabase.table("accounts").select("*, customer_profile:customer_id(email, full_name)").eq("account_id", req.account_id).execute()
     if not acc_res.data:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = acc_res.data[0]
@@ -101,7 +101,7 @@ def verify_operation(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_cur
 @router.post("/transfer-request")
 def request_transfer(req: TransferRequestModel, user: Dict[str, Any] = Depends(get_current_user)):
     # Validate account ownership
-    acc_res = supabase.table("accounts").select("*, customer_profile(email)").eq("account_id", req.account_id).execute()
+    acc_res = supabase.table("accounts").select("*, customer_profile:customer_id(email)").eq("account_id", req.account_id).execute()
     if not acc_res.data:
         raise HTTPException(status_code=404, detail="Account not found")
     acc = acc_res.data[0]
@@ -142,7 +142,7 @@ def request_transfer(req: TransferRequestModel, user: Dict[str, Any] = Depends(g
     
     # Email OTP to the account holder
     try:
-        cust_res = supabase.table("accounts").select("customer_profile(email, full_name)").eq("account_id", req.account_id).execute()
+        cust_res = supabase.table("accounts").select("customer_profile:customer_id(email, full_name)").eq("account_id", req.account_id).execute()
         if cust_res.data and cust_res.data[0].get("customer_profile"):
             prof = cust_res.data[0]["customer_profile"]
             from services.email import send_email # type: ignore
@@ -194,7 +194,7 @@ def verify_transfer(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_curr
             supabase.table("transfer_requests").update({"status": "approved"}).eq("request_id", req.request_id).execute()
             
             # Send success email
-            prof_res = supabase.table("accounts").select("customer_profile(email, full_name)").eq("account_id", t_req["account_id"]).execute()
+            prof_res = supabase.table("accounts").select("customer_profile:customer_id(email, full_name)").eq("account_id", t_req["account_id"]).execute()
             if prof_res.data:
                 prof = prof_res.data[0]["customer_profile"]
                 send_transfer_confirmation(prof["full_name"], prof["email"], amount, t_req["receiver_account"], result["new_balance"])
@@ -228,7 +228,7 @@ def approve_transfer(request_id: str, user: Dict[str, Any] = Depends(get_current
         supabase.table("transfer_requests").update({"status": "approved"}).eq("request_id", request_id).execute()
         
         # Send success email
-        prof_res = supabase.table("accounts").select("customer_profile(email, full_name)").eq("account_id", t_req["account_id"]).execute()
+        prof_res = supabase.table("accounts").select("customer_profile:customer_id(email, full_name)").eq("account_id", t_req["account_id"]).execute()
         if prof_res.data:
             prof = prof_res.data[0]["customer_profile"]
             send_transfer_confirmation(prof["full_name"], prof["email"], float(t_req["amount"]), t_req["receiver_account"], result["new_balance"])

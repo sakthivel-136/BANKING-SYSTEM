@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import api from "@/services/api"
+import { ManagerTransactionModal } from "@/components/ManagerTransactionModal"
 
 export default function ManagerAccounts() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -13,6 +14,8 @@ export default function ManagerAccounts() {
   const [filteredAccounts, setFilteredAccounts] = useState<any[]>([])
   const [chargeResult, setChargeResult] = useState<any>(null)
   const [chargeLoading, setChargeLoading] = useState(false)
+  const [isChargeApplied, setIsChargeApplied] = useState(false)
+  const [viewingAccount, setViewingAccount] = useState<any | null>(null)
 
   useEffect(() => {
     load()
@@ -27,6 +30,14 @@ export default function ManagerAccounts() {
       const res = await api.get("/accounts")
       setAccounts(res.data)
       setFilteredAccounts(res.data)
+      checkChargeStatus()
+    } catch (e) { console.error(e) }
+  }
+
+  const checkChargeStatus = async () => {
+    try {
+      const res = await api.get("/accounts/monthly-charges-status")
+      setIsChargeApplied(res.data.applied)
     } catch (e) { console.error(e) }
   }
 
@@ -71,11 +82,26 @@ export default function ManagerAccounts() {
       const res = await api.post(endpoint, {}, { timeout: 120000 })
       const data = dryRun ? res.data.preview : res.data.summary
       setChargeResult({ ...data, isDryRun: dryRun, message: res.data.message })
-      if (!dryRun) load()
+      if (!dryRun) {
+        load()
+        setIsChargeApplied(true)
+      }
     } catch (err: any) {
       alert(err.response?.data?.detail || "Failed to apply charges")
     } finally {
       setChargeLoading(false)
+      load()
+    }
+  }
+
+  const handleReverseCharges = async () => {
+    if (!confirm("Are you sure you want to reverse ALL monthly charges for this month?")) return
+    try {
+      const res = await api.post("/accounts/reverse-monthly-charges")
+      alert(res.data.message + " (" + res.data.count + " transactions reversed)")
+      load()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || "Reversal failed")
     }
   }
 
@@ -96,26 +122,39 @@ export default function ManagerAccounts() {
             (Savings ₹200 / Current ₹1,000 / Investment ₹10,000) + ₹50 notification charge per account.
             Use <strong>Preview</strong> to see what will be charged before applying.
           </p>
-          <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={() => applyMonthlyCharges(true)}
-              disabled={chargeLoading}
-              className="px-4 py-2 text-sm bg-white border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-100 transition font-medium disabled:opacity-50"
-            >
-              {chargeLoading ? "Loading..." : "🔍 Preview Charges"}
-            </button>
-            <button
-              onClick={() => {
-                if (confirm("Are you sure you want to apply monthly charges to ALL active accounts? This will deduct balance from customers and send email notifications.")) {
-                  applyMonthlyCharges(false)
-                }
-              }}
-              disabled={chargeLoading}
-              className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium disabled:opacity-50"
-            >
-              {chargeLoading ? "Processing..." : "⚡ Apply Monthly Charges Now"}
-            </button>
-          </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => applyMonthlyCharges(true)} 
+                disabled={chargeLoading || isChargeApplied}
+                className="flex-1 bg-white border border-orange-300 text-orange-700 py-2 rounded-lg hover:bg-orange-100 transition-all disabled:opacity-50"
+              >
+                Preview Charges
+              </button>
+              <button 
+                onClick={() => {
+                  if (confirm("Are you sure you want to apply monthly charges to ALL active accounts? This will deduct balance from customers and send email notifications.")) {
+                    applyMonthlyCharges(false)
+                  }
+                }}
+                disabled={chargeLoading || isChargeApplied}
+                className="flex-1 bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700 transition-all disabled:opacity-50"
+              >
+                {chargeLoading ? "Applying..." : "Apply Charges"}
+              </button>
+              {isChargeApplied && (
+                <button 
+                  onClick={handleReverseCharges}
+                  className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 font-bold transition-all shadow-lg animate-pulse"
+                >
+                  ↺ REVERSE BATCH CHARGES
+                </button>
+              )}
+            </div>
+            {isChargeApplied && (
+              <p className="text-center text-xs text-green-600 mt-2 font-semibold">
+                ✓ Monthly charges have already been applied for this month.
+              </p>
+            )}
 
           {/* Charge result summary */}
           {chargeResult && (
@@ -213,6 +252,12 @@ export default function ManagerAccounts() {
                        </span>
                     </td>
                     <td className="px-6 py-4 flex justify-center gap-2">
+                       <button 
+                         onClick={() => setViewingAccount(acc)}
+                         className="text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded"
+                       >
+                         View Details
+                       </button>
                       {acc.status === 'active' ? (
                         <>
                           <button onClick={() => changeStatus(acc.account_id, 'frozen')} className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-3 py-1 rounded">Freeze</button>
@@ -229,6 +274,13 @@ export default function ManagerAccounts() {
           </div>
         </CardContent>
       </Card>
+
+      {viewingAccount && (
+        <ManagerTransactionModal 
+          account={viewingAccount} 
+          onClose={() => setViewingAccount(null)} 
+        />
+      )}
     </DashboardLayout>
   )
 }

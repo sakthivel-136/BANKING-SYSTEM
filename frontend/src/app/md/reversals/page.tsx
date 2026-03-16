@@ -11,8 +11,10 @@ export default function MDReversalsPage() {
 
   const load = async () => {
     try {
-      const res = await api.get("/reversals/pending")
-      setItems(res.data || [])
+      const res = await api.get("/reversals/all")
+      // Only show those that are verified by manager but pending MD approval
+      const verified = (res.data || []).filter((r: any) => r.created_by_manager_id && r.status === 'pending')
+      setItems(verified)
     } catch (e) {
       console.error(e)
     } finally {
