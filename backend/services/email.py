@@ -36,7 +36,7 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
         msg.attach(MIMEText(plain_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
         server.ehlo()
         server.starttls()
         server.login(str(SMTP_USER), str(SMTP_PASSWORD))

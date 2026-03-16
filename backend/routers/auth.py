@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status # type: ignore
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks # type: ignore
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # type: ignore
 from database import supabase, supabase_anon # type: ignore
 from typing import Dict, Any
@@ -50,7 +50,7 @@ from models.schemas import LoginOTPRequest, LoginOTPVerify, StaffCreationRequest
 from services.email import send_email # type: ignore
 
 @router.post("/login-otp/request")
-def request_login_otp(payload: LoginOTPRequest):
+def request_login_otp(payload: LoginOTPRequest, background_tasks: BackgroundTasks):
     # Look up email by Customer ID (CU123456) or accept email directly for staff
     res = supabase.table("customer_profile").select("email").eq("customer_number", payload.customer_id).execute()
     if not res.data:
@@ -63,7 +63,6 @@ def request_login_otp(payload: LoginOTPRequest):
 
     try:
         # Use admin generate_link to produce a Supabase-compatible OTP code
-        # This does NOT send any email — we send it ourselves via SMTP
         link_res = supabase.auth.admin.generate_link({
             "type": "magiclink",
             "email": email
@@ -71,8 +70,8 @@ def request_login_otp(payload: LoginOTPRequest):
         otp_code = link_res.properties.email_otp
         print(f"DEBUG: Login OTP for {payload.customer_id} ({email}) is {otp_code}")
 
-        # Send the OTP via our branded SMTP email
-        send_email(
+        background_tasks.add_task(
+            send_email,
             email,
             "SmartBank — Your Login OTP",
             f"""
@@ -92,7 +91,7 @@ def request_login_otp(payload: LoginOTPRequest):
             """
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to send OTP: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to initiate OTP: {str(e)}")
 
     return {"message": "OTP sent to registered email"}
 
