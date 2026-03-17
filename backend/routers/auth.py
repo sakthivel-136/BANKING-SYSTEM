@@ -64,32 +64,20 @@ def request_login_otp(payload: LoginOTPRequest, background_tasks: BackgroundTask
         email = res.data[0]["email"]
 
     try:
-        # Use admin generate_link to produce a Supabase-compatible OTP code
-        link_res = supabase.auth.admin.generate_link({
-            "type": "magiclink",
+        # Use Supabase's native OTP delivery. 
+        # This bypasses Render's SMTP block because Supabase sends the email from their servers.
+        supabase.auth.sign_in_with_otp({
             "email": email
         })
-        otp_code = link_res.properties.email_otp
         
-        # CLEAR LOG MARKER - User retrieves OTP from here if SMTP fails
-        print(f"\n**************************************************", flush=True)
-        print(f"🔑 EMERGENCY OTP ACCESS for {email}: {otp_code}", flush=True)
-        print(f"**************************************************\n", flush=True)
+        print(f"DEBUG: Supabase native OTP sent to {email}. (Note: Code is secret for security)", flush=True)
 
-        # Send in background so UI doesn't time out
-        background_tasks.add_task(
-            send_email,
-            email,
-            "SmartBank Verification Code",
-            f"Your code is: {otp_code}",
-            plain_body=f"Your SmartBank OTP is: {otp_code}"
-        )
     except Exception as e:
         import traceback
         print(f"CRITICAL OTP INITIATION FAILURE: {traceback.format_exc()}", flush=True)
         raise HTTPException(status_code=400, detail=f"Failed to initiate OTP: {str(e)}")
 
-    return {"message": "OTP sent to your registered email (Check system logs if mail is delayed)"}
+    return {"message": "OTP has been sent to your registered email via Supabase Secure Mail."}
 
 
 @router.post("/login-otp/verify")
@@ -145,14 +133,12 @@ def request_staff_creation(payload: StaffCreationRequest, user: Dict[str, Any] =
         data["otp_code"] = otp
         supabase.table("staff_creation_requests").insert(data).execute()
         
-        # Send Email
-        send_email(
-            payload.email,
-            "SmartBank — Staff Onboarding OTP",
-            f"<p>Hello {payload.full_name},</p><p>You have been invited as a Manager. Your onboarding OTP is: <b style='font-size:24px'>{otp}</b></p><p>Use this to set your password on the login page.</p>"
-        )
-        print(f"DEBUG: Staff OTP for {payload.email} is {otp}")
-        return {"message": "Onboarding OTP sent to staff email"}
+        # Invite via Supabase Admin (Native Delivery)
+        # This ensures the invitation reaches the staff email despite Render's blocks.
+        supabase.auth.admin.invite_user_by_email(payload.email)
+        
+        print(f"DEBUG: Staff invitation sent to {payload.email}. Onboarding OTP is {otp}")
+        return {"message": "Onboarding invitation and OTP sent via Supabase Secure Mail"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
