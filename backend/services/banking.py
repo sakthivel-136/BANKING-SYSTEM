@@ -102,7 +102,7 @@ def _count_today_combined_txns(account_id: str) -> int:
     return len(res.data) if res.data else 0
 
 
-def apply_charge(account_id: str, account_number: str, charge_amount: float, reason: str) -> float:
+def apply_charge(account_id: str, account_number: str, charge_amount: float, reason: str, notify_email: Optional[str] = None, customer_name: Optional[str] = None) -> float:
     """
     Deduct charge_amount from the customer's account.
     Credit it to the BANK-CHARGES central account.
@@ -151,6 +151,14 @@ def apply_charge(account_id: str, account_number: str, charge_amount: float, rea
         }).execute()
     except Exception as e:
         print(f"DEBUG: BANK-CHARGES credit failed: {e}")
+
+    # Notify Customer if email provided
+    if notify_email:
+        try:
+            from services.email import send_bank_charge_notice # type: ignore
+            send_bank_charge_notice(customer_name or "Customer", notify_email, account_number, charge_amount, reason)
+        except Exception as e:
+            print(f"DEBUG: Automated charge email failed: {e}")
 
     return new_bal
 
@@ -330,7 +338,7 @@ def execute_transaction(txn: TransactionCreate):
         if current_balance < amount + charge:
             raise ValueError(f"Insufficient funds including 1% transfer fee of ₹{charge:,.2f}")
         
-        charge_bal = apply_charge(account_id, account_number, charge, "Transfer service charge (1%)")
+        charge_bal = apply_charge(account_id, account_number, charge, "Transfer service charge (1%)", notify_email=customer_email, customer_name=customer_name)
         current_balance = charge_bal
         if customer_email:
             try:

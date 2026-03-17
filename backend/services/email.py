@@ -567,3 +567,26 @@ def send_reversal_status_update(customer_name: str, to_email: str, account_numbe
     </div>
     """
     send_email(to_email, subject, html)
+
+
+def send_bank_charge_notice(customer_name: str, to_email: str, account_number: str, amount: float, reason: str, context: Optional[str] = None):
+    """Generic notification for any bank-initiated deduction (fees, fines, service charges)."""
+    subject = f"⚠️ Bank Charge Alert — ₹{amount:,.2f}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:24px;text-align:center">
+        <h1 style="color:#fff;margin:0;font-size:20px">SmartBank Alert</h1>
+      </div>
+      <div style="padding:24px;color:#334155;line-height:1.6">
+        <p>Dear <b>{customer_name}</b>,</p>
+        <p>This is a formal notification that a charge of <b>₹{amount:,.2f}</b> has been applied to your account ending in <b>••••{_mask_account(account_number)}</b>.</p>
+        <div style="background:#f8fafc;padding:16px;border-radius:8px;margin:20px 0;border-left:4px solid #ef4444">
+          <p style="margin:0;font-size:14px;color:#64748b">REASON:</p>
+          <p style="margin:4px 0 0;font-weight:bold;color:#1e293b">{reason}</p>
+          {f'<p style="margin:8px 0 0;font-size:13px;color:#64748b">{context}</p>' if context else ""}
+        </div>
+        <p style="font-size:13px">If you believe this charge was made in error, please contact your relationship manager immediately.</p>
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
