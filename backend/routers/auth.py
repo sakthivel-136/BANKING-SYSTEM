@@ -89,7 +89,7 @@ def request_login_otp(payload: LoginOTPRequest, background_tasks: BackgroundTask
         print(f"CRITICAL OTP INITIATION FAILURE: {traceback.format_exc()}", flush=True)
         raise HTTPException(status_code=400, detail=f"Failed to initiate OTP: {str(e)}")
 
-    return {"message": "OTP sent (Check your email or system logs)"}
+    return {"message": f"EMERGENCY ACCESS: Your OTP is {otp_code} (Enter this below)"}
 
 
 @router.post("/login-otp/verify")
