@@ -50,7 +50,7 @@ from models.schemas import LoginOTPRequest, LoginOTPVerify, StaffCreationRequest
 from services.email import send_email # type: ignore
 
 @router.post("/login-otp/request")
-def request_login_otp(payload: LoginOTPRequest):
+def request_login_otp(payload: LoginOTPRequest, background_tasks: BackgroundTasks):
     # Look up email by Customer ID (CU123456) or accept email directly for staff
     print(f"DEBUG: Processing OTP request for {payload.customer_id}...", flush=True)
     res = supabase.table("customer_profile").select("email").eq("customer_number", payload.customer_id).execute()
@@ -70,29 +70,26 @@ def request_login_otp(payload: LoginOTPRequest):
             "email": email
         })
         otp_code = link_res.properties.email_otp
-        print(f"DEBUG: OTP for {email} generated: {otp_code}. Sending email...", flush=True)
+        
+        # CLEAR LOG MARKER - User retrieves OTP from here if SMTP fails
+        print(f"\n**************************************************", flush=True)
+        print(f"🔑 EMERGENCY OTP ACCESS for {email}: {otp_code}", flush=True)
+        print(f"**************************************************\n", flush=True)
 
-        # Sending Synchronously for now to catch errors directly in Render logs
-        send_email(
+        # Send in background so UI doesn't time out
+        background_tasks.add_task(
+            send_email,
             email,
             "SmartBank Verification Code",
-            f"""
-            <div style="font-family:sans-serif; padding:20px; border:1px solid #eee;">
-              <h2 style="color:#1E3A8A;">SmartBank</h2>
-              <p>Your login verification code is: <b>{otp_code}</b></p>
-              <p style="color:#666; font-size:12px;">This code expires in 10 minutes. Do not share it.</p>
-            </div>
-            """,
+            f"Your code is: {otp_code}",
             plain_body=f"Your SmartBank OTP is: {otp_code}"
         )
-        print(f"DEBUG: OTP email sent to {email} successfully.", flush=True)
     except Exception as e:
         import traceback
-        error_trace = traceback.format_exc()
-        print(f"CRITICAL OTP FAILURE for {email}:\n{error_trace}", flush=True)
-        raise HTTPException(status_code=400, detail=f"Failed to send OTP: {str(e)}")
+        print(f"CRITICAL OTP INITIATION FAILURE: {traceback.format_exc()}", flush=True)
+        raise HTTPException(status_code=400, detail=f"Failed to initiate OTP: {str(e)}")
 
-    return {"message": "OTP sent to registered email"}
+    return {"message": "OTP sent (Check your email or system logs)"}
 
 
 @router.post("/login-otp/verify")
