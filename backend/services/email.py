@@ -23,13 +23,44 @@ def _mask_account(acc: Any) -> str:
     return s[n-4] + s[n-3] + s[n-2] + s[n-1]
 
 
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+
 def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] = None):
     """
-    Ultra-resilient email sender with IPv4 forcing and multi-host fallback.
+    Sends email using Resend API (HTTP) if available, falling back to SMTP.
+    HTTP-based delivery bypasses Render's SMTP port blocks.
     """
-    import socket
     print(f"DIAGNOSTIC: Starting send_email to {to}...", flush=True)
-    
+
+    # Strategy 1: Resend API (Primary for Hosted Environments)
+    if RESEND_API_KEY:
+        try:
+            print("DEBUG: Attempting delivery via Resend API...", flush=True)
+            import resend
+            resend.api_key = RESEND_API_KEY
+            
+            params = {
+                "from": f"{FROM_NAME} <onboarding@resend.dev>" if not FROM_EMAIL or "gmail.com" in FROM_EMAIL else f"{FROM_NAME} <{FROM_EMAIL}>",
+                "to": [to],
+                "subject": subject,
+                "html": html_body,
+            }
+            # Note: If using Resend free tier without a custom domain, 
+            # we MUST send from onboarding@resend.dev and can only send to the registered owner email.
+            # To send to ANY email with custom branding, the user must add their domain to Resend.
+            
+            resend.Emails.send(params)
+            print(f"DEBUG: SUCCESS via Resend API", flush=True)
+            return
+        except Exception as e:
+            print(f"DEBUG: Resend API failed: {e}. Falling back to SMTP...", flush=True)
+
+    # Strategy 2: SMTP Fallback (Works on Localhost)
+    import socket
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
     # Force IPv4 to avoid Render's flaky IPv6 routing
     def get_ipv4_socket(host, port, timeout):
         addr_info = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
@@ -52,21 +83,18 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
     strategies = [
         {"host": "smtp.gmail.com", "port": 587},
         {"host": "smtp.googlemail.com", "port": 465},
-        {"host": "74.125.142.108", "port": 587}, # Hardcoded Gmail IP fallback
     ]
 
-    last_error = Exception("All SMTP strategies failed")
+    last_error = Exception("All email delivery strategies failed")
     for s in strategies:
         host = str(s["host"])
         port = int(s["port"])
         try:
-            print(f"DEBUG: Attempting connection to {host}:{port} (IPv4 Forced)...", flush=True)
+            print(f"DEBUG: Attempting SMTP connection to {host}:{port}...", flush=True)
             if port == 465:
-                # SSL requires a slightly different wrapper for forced IPv4
                 raw_sock = get_ipv4_socket(host, port, 10)
                 import ssl
                 context = ssl.create_default_context()
-                # Use a str hostname for SSL SNI
                 hostname = host if not (host.replace('.', '').isdigit()) else "smtp.gmail.com"
                 sslsock = context.wrap_socket(raw_sock, server_hostname=hostname)
                 server = smtplib.SMTP_SSL(host, port, timeout=10) 
@@ -79,14 +107,14 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
             server.login(str(SMTP_USER), clean_password)
             server.send_message(msg)
             server.quit()
-            print(f"DEBUG: SUCCESS via {host}:{port}", flush=True)
+            print(f"DEBUG: SUCCESS via SMTP {host}:{port}", flush=True)
             return
         except Exception as e:
             last_error = e
-            print(f"DEBUG: {host}:{port} failed: {e}", flush=True)
+            print(f"DEBUG: SMTP {host}:{port} failed: {e}", flush=True)
             continue
 
-    print(f"CRITICAL: All SMTP ports are BLOCKED by Render for {to}.", flush=True)
+    print(f"CRITICAL: All delivery methods failed for {to}.", flush=True)
     raise last_error
 
 
