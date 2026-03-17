@@ -27,7 +27,7 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
     """
     Resilient email sender with auto-fallback for TLS/SSL and password cleaning.
     """
-    print(f"DEBUG: Entering send_email for {to}...", flush=True)
+    print(f"DEBUG: Entering send_email to={to}, subject='{subject}'", flush=True)
     # Clean password in case user added quotes in Render UI
     clean_password = str(SMTP_PASSWORD).strip('"').strip("'")
     
@@ -35,6 +35,7 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
     msg["Subject"] = subject
     msg["From"]    = f"{FROM_NAME} <{FROM_EMAIL}>"
     msg["To"]      = to
+    msg["X-Mailer"] = "SmartBank Automation System"
 
     if plain_body:
         msg.attach(MIMEText(plain_body, "plain"))
@@ -48,24 +49,30 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
     last_error = None
     for port in ports_to_try:
         try:
-            print(f"DEBUG: Attempting email to {to} via {SMTP_HOST}:{port}...", flush=True)
+            print(f"DEBUG: Handshaking with {SMTP_HOST}:{port}...", flush=True)
             if port == 465:
-                server = smtplib.SMTP_SSL(SMTP_HOST, port, timeout=10)
+                server = smtplib.SMTP_SSL(SMTP_HOST, port, timeout=15)
             else:
-                server = smtplib.SMTP(SMTP_HOST, port, timeout=10)
+                server = smtplib.SMTP(SMTP_HOST, port, timeout=15)
+                server.ehlo()
                 server.starttls()
+                server.ehlo()
             
+            print(f"DEBUG: Authenticating as {SMTP_USER}...", flush=True)
             server.login(str(SMTP_USER), clean_password)
+            
+            print(f"DEBUG: Sending data to {to}...", flush=True)
             server.sendmail(str(FROM_EMAIL), to, msg.as_string())
             server.quit()
-            print(f"DEBUG: Email success via port {port}", flush=True)
+            print(f"DEBUG: SUCCESS sending email to {to} via port {port}", flush=True)
             return # Success!
         except Exception as e:
             last_error = e
-            print(f"DEBUG: Port {port} failed: {str(e)}", flush=True)
+            print(f"DEBUG: FAILURE on port {port}: {str(e)}", flush=True)
             continue
 
-    print(f"CRITICAL EMAIL FAILURE: All ports failed. Last error: {str(last_error)}", flush=True)
+    print(f"CRITICAL: All ports failed for {to}. Last error: {str(last_error)}", flush=True)
+    raise last_error
 
 
 # ── Specific notification functions ──────────────────────────────────

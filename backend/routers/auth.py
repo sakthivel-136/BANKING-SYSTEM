@@ -50,13 +50,15 @@ from models.schemas import LoginOTPRequest, LoginOTPVerify, StaffCreationRequest
 from services.email import send_email # type: ignore
 
 @router.post("/login-otp/request")
-def request_login_otp(payload: LoginOTPRequest, background_tasks: BackgroundTasks):
+def request_login_otp(payload: LoginOTPRequest):
     # Look up email by Customer ID (CU123456) or accept email directly for staff
+    print(f"DEBUG: Processing OTP request for {payload.customer_id}...", flush=True)
     res = supabase.table("customer_profile").select("email").eq("customer_number", payload.customer_id).execute()
     if not res.data:
         if "@" in payload.customer_id:
             email = payload.customer_id
         else:
+            print(f"DEBUG: User {payload.customer_id} not found in profile", flush=True)
             raise HTTPException(status_code=404, detail="User not found with this Customer ID")
     else:
         email = res.data[0]["email"]
@@ -68,30 +70,30 @@ def request_login_otp(payload: LoginOTPRequest, background_tasks: BackgroundTask
             "email": email
         })
         otp_code = link_res.properties.email_otp
-        print(f"DEBUG: Login OTP for {payload.customer_id} ({email}) is {otp_code}", flush=True)
+        print(f"DEBUG: OTP for {email} generated: {otp_code}. Sending email...", flush=True)
 
-        background_tasks.add_task(
-            send_email,
+        # Sending Synchronously for now to catch errors directly in Render logs
+        send_email(
             email,
             "SmartBank — Your Login OTP",
             f"""
-            <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-              <div style="background:#1E3A8A;padding:20px 24px">
-                <h2 style="color:#fff;margin:0;font-size:18px">SmartBank</h2>
-                <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px">Login Verification</p>
+            <div style="font-family:sans-serif; padding:20px; border:1px solid #eee;">
+              <h2 style="color:#1E3A8A;">SmartBank</h2>
+              <p>Your login verification code is:</p>
+              <div style="background:#f4f4f4; padding:20px; font-size:32px; font-weight:bold; letter-spacing:5px; text-align:center;">
+                {otp_code}
               </div>
-              <div style="padding:24px">
-                <p style="color:#0f172a;font-size:15px">Your SmartBank login OTP is:</p>
-                <div style="background:#f0f9ff;border:2px solid #bae6fd;border-radius:8px;padding:16px;margin:16px 0;text-align:center">
-                  <span style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#0369a1">{otp_code}</span>
-                </div>
-                <p style="color:#64748b;font-size:13px">This OTP expires in 10 minutes. Do not share it with anyone.</p>
-              </div>
+              <p style="color:#666; font-size:12px;">This code expires in 10 minutes. Do not share it.</p>
             </div>
-            """
+            """,
+            plain_body=f"Your SmartBank OTP is: {otp_code}. Valid for 10 minutes."
         )
+        print(f"DEBUG: OTP email sent to {email} successfully.", flush=True)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to initiate OTP: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"CRITICAL OTP FAILURE for {email}:\n{error_trace}", flush=True)
+        raise HTTPException(status_code=400, detail=f"Failed to send OTP: {str(e)}")
 
     return {"message": "OTP sent to registered email"}
 
