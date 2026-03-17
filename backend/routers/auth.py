@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks # type: ignore
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # type: ignore
-from database import supabase, supabase_anon # type: ignore
+try:
+    from database import supabase, supabase_anon # type: ignore
+except ImportError:
+    from backend.database import supabase, supabase_anon # type: ignore
 from typing import Dict, Any
 import random
 
