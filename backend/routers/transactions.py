@@ -43,29 +43,34 @@ def request_operation(op_type: str, req: OperationRequestModel, user: Dict[str, 
     if op_type == "withdraw" and acc["status"] != "active":
          raise HTTPException(status_code=403, detail=f"Account is {acc['status']}. Withdrawal not allowed.")
 
-    # Trigger Supabase Native OTP delivery
+    # Trigger Custom OTP delivery
     try:
         prof = acc["customer_profile"]
         email = prof["email"]
         
-        # This sends the OTP via Supabase's SMTP bridge (Gmail)
-        supabase.auth.sign_in_with_otp({"email": email})
+        # Generate Custom OTP
+        otp_code = str(random.randint(100000, 999999))
         
-        # Insert Request (no otp_code stored, Supabase manages it)
+        # Deliver via SmartBank (Resend)
+        from services.email import send_transaction_otp # type: ignore
+        send_transaction_otp(prof["full_name"], email, op_type, req.amount, otp_code)
+        
+        # Insert Request with otp_code
         insert_data = {
             "account_id": req.account_id,
             "operation_type": op_type,
             "amount": req.amount,
+            "otp_code": otp_code,
             "status": "pending_otp"
         }
         res = supabase.table("account_operation_requests").insert(insert_data).execute()
         req_id = str(res.data[0]["request_id"])
         
-        print(f"DEBUG: {op_type.capitalize()} OTP triggered via Supabase for {email}", flush=True)
-        return {"message": "OTP has been sent to your registered email via Supabase Secure Mail.", "request_id": req_id}
+        print(f"DEBUG: {op_type.capitalize()} custom OTP sent to {email}", flush=True)
+        return {"message": "Security code has been sent to your registered email.", "request_id": req_id}
         
     except Exception as e:
-        print(f"CRITICAL: Failed to trigger Supabase OTP: {e}", flush=True)
+        print(f"CRITICAL: Failed to trigger Transaction OTP: {e}", flush=True)
         raise HTTPException(status_code=400, detail="Failed to send security code. Please try again.")
 
 @router.post("/operation-verify")
@@ -78,23 +83,8 @@ def verify_operation(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_cur
     if op_req["status"] != "pending_otp":
         raise HTTPException(status_code=400, detail="Request is not pending OTP")
         
-    # Verify the Supabase-generated OTP code
-    try:
-        # We need the user's email to verify the OTP with Supabase
-        acc_res = supabase.table("accounts").select("customer_profile:customer_id(email)").eq("account_id", op_req["account_id"]).execute()
-        email = acc_res.data[0]["customer_profile"]["email"]
-        
-        auth_res = supabase_anon.auth.verify_otp({
-            "email": email,
-            "token": req.otp_code,
-            "type": "email"
-        })
-        
-        if not auth_res.session:
-             raise HTTPException(status_code=400, detail="Invalid or expired security code")
-             
-    except Exception as auth_err:
-        print(f"DEBUG: Supabase verification failed: {auth_err}", flush=True)
+    # Verify Custom OTP
+    if str(op_req.get("otp_code")) != str(req.otp_code):
         raise HTTPException(status_code=400, detail="Invalid security code")
         
     # Execute transaction
@@ -128,27 +118,31 @@ def request_transfer(req: TransferRequestModel, user: Dict[str, Any] = Depends(g
     if acc_status == "closed":
         raise HTTPException(status_code=403, detail="Account is blocked. Transfers are not allowed. Contact your branch.")
 
-    # Trigger Supabase Native OTP
+    # Trigger Custom OTP delivery
     try:
-        # Get email
         email = acc["customer_profile"]["email"]
-        supabase.auth.sign_in_with_otp({"email": email})
+        otp_code = str(random.randint(100000, 999999))
+        
+        # Deliver via SmartBank (Resend)
+        from services.email import send_transaction_otp # type: ignore
+        send_transaction_otp(acc.get("customer_profile", {}).get("full_name", "Customer"), email, "transfer", req.amount, otp_code)
         
         # Insert Request
         insert_data = {
             "account_id": req.account_id,
             "receiver_account": req.receiver_account,
             "amount": req.amount,
+            "otp_code": otp_code,
             "status": "pending_otp"
         }
         res = supabase.table("transfer_requests").insert(insert_data).execute()
         req_id = str(res.data[0]["request_id"])
         
-        print(f"DEBUG: Transfer OTP triggered via Supabase for {email}", flush=True)
-        return {"message": "Security code sent via Supabase Secure Mail.", "request_id": req_id}
+        print(f"DEBUG: Transfer custom OTP sent to {email}", flush=True)
+        return {"message": "Security code sent to your registered email.", "request_id": req_id}
         
     except Exception as e:
-        print(f"CRITICAL: Failed to trigger Supabase Transfer OTP: {e}", flush=True)
+        print(f"CRITICAL: Failed to trigger Transfer OTP: {e}", flush=True)
         raise HTTPException(status_code=400, detail="Failed to send security code.")
 
 @router.post("/transfer-verify")
@@ -161,24 +155,9 @@ def verify_transfer(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_curr
     if t_req["status"] != "pending_otp":
         raise HTTPException(status_code=400, detail="Transfer is not pending OTP")
         
-    # Verify Supabase OTP
-    try:
-        # Get email
-        acc_res = supabase.table("accounts").select("customer_profile:customer_id(email)").eq("account_id", t_req["account_id"]).execute()
-        email = acc_res.data[0]["customer_profile"]["email"]
-        
-        auth_res = supabase_anon.auth.verify_otp({
-            "email": email,
-            "token": req.otp_code,
-            "type": "email"
-        })
-        
-        if not auth_res.session:
-            raise HTTPException(status_code=400, detail="Invalid security code")
-            
-    except Exception as auth_err:
-        print(f"DEBUG: Supabase Transfer OTP Fail: {auth_err}", flush=True)
-        raise HTTPException(status_code=400, detail="Invalid or expired security code")
+    # Verify Custom OTP
+    if str(t_req.get("otp_code")) != str(req.otp_code):
+        raise HTTPException(status_code=400, detail="Invalid security code")
         
     amount = float(t_req["amount"])
     

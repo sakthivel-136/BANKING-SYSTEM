@@ -1,10 +1,13 @@
 try:
-    from database import supabase
+    from database import supabase # type: ignore
 except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from database import supabase
+    try:
+        from backend.database import supabase # type: ignore
+    except ImportError:
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        from database import supabase # type: ignore
 import sys
 
 def check_customer(customer_number):

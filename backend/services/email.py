@@ -590,3 +590,25 @@ def send_bank_charge_notice(customer_name: str, to_email: str, account_number: s
     </div>
     """
     send_email(to_email, subject, html)
+
+
+def send_transaction_otp(customer_name: str, to_email: str, op_type: str, amount: float, otp: str):
+    """Sends a 6-digit security code for deposits, withdrawals, and transfers."""
+    subject = f"🔐 Security Code: {otp} — SmartBank"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">
+      <div style="background:#1E3A8A;padding:24px;text-align:center">
+        <h1 style="color:#fff;margin:0;font-size:20px">SmartBank Security</h1>
+      </div>
+      <div style="padding:24px;color:#334155;line-height:1.6">
+        <p>Dear <b>{customer_name}</b>,</p>
+        <p>You have requested a <b>{op_type.upper()}</b> of <b>₹{amount:,.2f}</b>.</p>
+        <p>Please use the following single-use security code to authorize this transaction:</p>
+        <div style="background:#f8fafc;padding:20px;text-align:center;border-radius:12px;margin:24px 0;border:2px dashed #cbd5e1">
+          <span style="font-family:'Courier New',monospace;font-size:32px;font-weight:bold;letter-spacing:8px;color:#1e3a8a">{otp}</span>
+        </div>
+        <p style="font-size:13px;color:#64748b">This code is valid for 10 minutes. If you did not initiate this request, please change your password immediately and contact support.</p>
+      </div>
+    </div>
+    """
+    send_email(to_email, subject, html)
