@@ -68,7 +68,7 @@ def request_login_otp(payload: LoginOTPRequest, background_tasks: BackgroundTask
             "email": email
         })
         otp_code = link_res.properties.email_otp
-        print(f"DEBUG: Login OTP for {payload.customer_id} ({email}) is {otp_code}")
+        print(f"DEBUG: Login OTP for {payload.customer_id} ({email}) is {otp_code}", flush=True)
 
         background_tasks.add_task(
             send_email,
@@ -277,8 +277,10 @@ def test_connectivity(email: str):
         return results
     except Exception as e:
         import traceback
+        error_msg = traceback.format_exc()
+        print(f"DIAGNOSTIC FAILURE: {error_msg}", flush=True)
         results["status"] = "error"
         results["error_type"] = type(e).__name__
         results["error_detail"] = str(e)
-        results["traceback"] = traceback.format_exc()
+        results["traceback"] = error_msg
         return results

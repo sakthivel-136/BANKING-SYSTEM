@@ -27,6 +27,7 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
     """
     Resilient email sender with auto-fallback for TLS/SSL and password cleaning.
     """
+    print(f"DEBUG: Entering send_email for {to}...", flush=True)
     # Clean password in case user added quotes in Render UI
     clean_password = str(SMTP_PASSWORD).strip('"').strip("'")
     
@@ -47,7 +48,7 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
     last_error = None
     for port in ports_to_try:
         try:
-            print(f"DEBUG: Attempting email to {to} via {SMTP_HOST}:{port}...")
+            print(f"DEBUG: Attempting email to {to} via {SMTP_HOST}:{port}...", flush=True)
             if port == 465:
                 server = smtplib.SMTP_SSL(SMTP_HOST, port, timeout=10)
             else:
@@ -57,14 +58,14 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
             server.login(str(SMTP_USER), clean_password)
             server.sendmail(str(FROM_EMAIL), to, msg.as_string())
             server.quit()
-            print(f"DEBUG: Email success via port {port}")
+            print(f"DEBUG: Email success via port {port}", flush=True)
             return # Success!
         except Exception as e:
             last_error = e
-            print(f"DEBUG: Port {port} failed: {str(e)}")
+            print(f"DEBUG: Port {port} failed: {str(e)}", flush=True)
             continue
 
-    print(f"CRITICAL EMAIL FAILURE: All ports failed. Last error: {str(last_error)}")
+    print(f"CRITICAL EMAIL FAILURE: All ports failed. Last error: {str(last_error)}", flush=True)
 
 
 # ── Specific notification functions ──────────────────────────────────
