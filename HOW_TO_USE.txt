@@ -1,0 +1,53 @@
+SMARTBANK - HOW TO USE & TEST GUIDE
+===================================
+
+Follow these simple steps to test the banking system:
+
+STEP 1: Check the Backend
+-------------------------
+Before clicking any links, make sure the Backend server is "Live" or "Running" in your Render dashboard. The website will not work if the backend is sleeping.
+
+STEP 2: Open the Website
+-------------------------
+Click your Vercel or local link to open the SmartBank website.
+
+STEP 3: Staff/Manager Login
+---------------------------
+If you are a new viewer, start here:
+1. Go to the Login page.
+2. Select "Staff Login".
+3. The Manager Email is already written on that page (usually manager@smartbank.com).
+4. Use the Password: password123
+5. Click Login. You are now in the Manager Dashboard!
+
+STEP 4: Create a Customer
+-------------------------
+To test the "Customer" side, you must create one first:
+1. Inside the Manager Dashboard, find the "Add Customer" or "Users" section.
+2. Click "Add Customer".
+3. Enter details for a new person. 
+   ***IMPORTANT:*** Use a real email address that you can check for the OTP.
+4. Save the Customer. Remember the "Customer ID" (like CU996888).
+
+STEP 5: Customer Login & OTP
+----------------------------
+1. Logout of Staff and go back to the Login page.
+2. Select "Customer Login".
+3. Enter the Customer ID you just created.
+4. Click "Request Secure OTP".
+5. Check your Email inbox. You will receive an 8-digit code from "SmartBank Notifications".
+6. Type that code into the website to finish logging in.
+
+STEP 6: Test Everything!
+------------------------
+Now that you are logged in as a Customer, you can test everything:
+- Deposit Funds (Add money)
+- Transfer Money (Send to others)
+- Request Reversal (Fix a mistake)
+- View Statements & Profiles
+
+Every time you do a transaction, check your email—you will get a beautiful notification alert!
+
+===================================
+Banking System - Secure & Automated
+===================================

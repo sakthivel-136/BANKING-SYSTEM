@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException # type: ignore
 from typing import Dict, Any, List
 from pydantic import BaseModel # type: ignore
-from database import supabase # type: ignore
+from database import supabase, supabase_anon # type: ignore
 from models.schemas import TransactionCreate # type: ignore
 from routers.auth import get_current_user # type: ignore
 from services.banking import execute_transaction, get_account_config # type: ignore
@@ -43,33 +43,30 @@ def request_operation(op_type: str, req: OperationRequestModel, user: Dict[str, 
     if op_type == "withdraw" and acc["status"] != "active":
          raise HTTPException(status_code=403, detail=f"Account is {acc['status']}. Withdrawal not allowed.")
 
-    # Generate OTP
-    otp = str(random.randint(100000, 999999))
-    
-    # Insert Request
-    insert_data = {
-        "account_id": req.account_id,
-        "operation_type": op_type,
-        "amount": req.amount,
-        "otp_code": otp,
-        "status": "pending_otp"
-    }
-    res = supabase.table("account_operation_requests").insert(insert_data).execute()
-    req_id = str(res.data[0]["request_id"])
-    
-    # Send Email
+    # Trigger Supabase Native OTP delivery
     try:
         prof = acc["customer_profile"]
-        from services.email import send_email # type: ignore
-        send_email(
-            prof["email"],
-            f"SmartBank — {op_type.capitalize()} OTP Verification",
-            f"<p>Dear <b>{prof['full_name']}</b>,</p><p>Your OTP to authorise the <b>{op_type}</b> of <b>₹{req.amount:,.2f}</b> is:</p><p style='font-size:24px;font-weight:bold;letter-spacing:4px'>{otp}</p><p>This OTP expires in 10 minutes. Do not share it with anyone.</p>"
-        )
-    except Exception as email_err:
-        print(f"DEBUG: Email failed: {email_err}")
-
-    return {"message": "OTP sent to registered email", "request_id": req_id}
+        email = prof["email"]
+        
+        # This sends the OTP via Supabase's SMTP bridge (Gmail)
+        supabase.auth.sign_in_with_otp({"email": email})
+        
+        # Insert Request (no otp_code stored, Supabase manages it)
+        insert_data = {
+            "account_id": req.account_id,
+            "operation_type": op_type,
+            "amount": req.amount,
+            "status": "pending_otp"
+        }
+        res = supabase.table("account_operation_requests").insert(insert_data).execute()
+        req_id = str(res.data[0]["request_id"])
+        
+        print(f"DEBUG: {op_type.capitalize()} OTP triggered via Supabase for {email}", flush=True)
+        return {"message": "OTP has been sent to your registered email via Supabase Secure Mail.", "request_id": req_id}
+        
+    except Exception as e:
+        print(f"CRITICAL: Failed to trigger Supabase OTP: {e}", flush=True)
+        raise HTTPException(status_code=400, detail="Failed to send security code. Please try again.")
 
 @router.post("/operation-verify")
 def verify_operation(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_current_user)):
@@ -81,8 +78,24 @@ def verify_operation(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_cur
     if op_req["status"] != "pending_otp":
         raise HTTPException(status_code=400, detail="Request is not pending OTP")
         
-    if op_req["otp_code"] != req.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid OTP code")
+    # Verify the Supabase-generated OTP code
+    try:
+        # We need the user's email to verify the OTP with Supabase
+        acc_res = supabase.table("accounts").select("customer_profile:customer_id(email)").eq("account_id", op_req["account_id"]).execute()
+        email = acc_res.data[0]["customer_profile"]["email"]
+        
+        auth_res = supabase_anon.auth.verify_otp({
+            "email": email,
+            "token": req.otp_code,
+            "type": "email"
+        })
+        
+        if not auth_res.session:
+             raise HTTPException(status_code=400, detail="Invalid or expired security code")
+             
+    except Exception as auth_err:
+        print(f"DEBUG: Supabase verification failed: {auth_err}", flush=True)
+        raise HTTPException(status_code=400, detail="Invalid security code")
         
     # Execute transaction
     txn_data = TransactionCreate(
@@ -115,47 +128,28 @@ def request_transfer(req: TransferRequestModel, user: Dict[str, Any] = Depends(g
     if acc_status == "closed":
         raise HTTPException(status_code=403, detail="Account is blocked. Transfers are not allowed. Contact your branch.")
 
-    # Generate OTP
-    otp = str(random.randint(100000, 999999))
-    
-    # Fetch dynamic threshold for OTP
-    config = get_account_config(acc["account_type"])
-    otp_threshold = float(config["transaction_otp_threshold"])
-    
-    if req.amount <= otp_threshold:
-        # User says "only the OTP needed" if HIGHER than X. 
-        # So if lower, maybe we just execute directly?
-        # But for banking security, let's still require OTP but maybe flag it differently.
-        # However, to follow user's "only 50,000 only the OTP needed", I'll set a flag.
-        pass
-
-    # Insert Request
-    insert_data = {
-        "account_id": req.account_id,
-        "receiver_account": req.receiver_account,
-        "amount": req.amount,
-        "otp_code": otp,
-        "status": "pending_otp"
-    }
-    res = supabase.table("transfer_requests").insert(insert_data).execute()
-    req_id = str(res.data[0]["request_id"])
-    
-    # Email OTP to the account holder
+    # Trigger Supabase Native OTP
     try:
-        cust_res = supabase.table("accounts").select("customer_profile:customer_id(email, full_name)").eq("account_id", req.account_id).execute()
-        if cust_res.data and cust_res.data[0].get("customer_profile"):
-            prof = cust_res.data[0]["customer_profile"]
-            from services.email import send_email # type: ignore
-            send_email(
-                prof["email"],
-                "SmartBank — Transfer OTP Verification",
-                f"<p>Dear <b>{prof['full_name']}</b>,</p><p>Your OTP to authorise the transfer of <b>₹{req.amount:,.2f}</b> is:</p><p style='font-size:24px;font-weight:bold;letter-spacing:4px'>{otp}</p><p>This OTP expires in 10 minutes. Do not share it with anyone.</p>"
-            )
-    except Exception as email_err:
-        print(f"DEBUG: Email failed: {email_err}")
-    
-    print(f"DEBUG: OTP for transfer {req_id} is {otp} (Threshold: {otp_threshold})")
-    return {"message": "OTP sent to registered email", "request_id": req_id}
+        # Get email
+        email = acc["customer_profile"]["email"]
+        supabase.auth.sign_in_with_otp({"email": email})
+        
+        # Insert Request
+        insert_data = {
+            "account_id": req.account_id,
+            "receiver_account": req.receiver_account,
+            "amount": req.amount,
+            "status": "pending_otp"
+        }
+        res = supabase.table("transfer_requests").insert(insert_data).execute()
+        req_id = str(res.data[0]["request_id"])
+        
+        print(f"DEBUG: Transfer OTP triggered via Supabase for {email}", flush=True)
+        return {"message": "Security code sent via Supabase Secure Mail.", "request_id": req_id}
+        
+    except Exception as e:
+        print(f"CRITICAL: Failed to trigger Supabase Transfer OTP: {e}", flush=True)
+        raise HTTPException(status_code=400, detail="Failed to send security code.")
 
 @router.post("/transfer-verify")
 def verify_transfer(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_current_user)):
@@ -167,8 +161,24 @@ def verify_transfer(req: OTPVerifyModel, user: Dict[str, Any] = Depends(get_curr
     if t_req["status"] != "pending_otp":
         raise HTTPException(status_code=400, detail="Transfer is not pending OTP")
         
-    if t_req["otp_code"] != req.otp_code:
-        raise HTTPException(status_code=400, detail="Invalid OTP code")
+    # Verify Supabase OTP
+    try:
+        # Get email
+        acc_res = supabase.table("accounts").select("customer_profile:customer_id(email)").eq("account_id", t_req["account_id"]).execute()
+        email = acc_res.data[0]["customer_profile"]["email"]
+        
+        auth_res = supabase_anon.auth.verify_otp({
+            "email": email,
+            "token": req.otp_code,
+            "type": "email"
+        })
+        
+        if not auth_res.session:
+            raise HTTPException(status_code=400, detail="Invalid security code")
+            
+    except Exception as auth_err:
+        print(f"DEBUG: Supabase Transfer OTP Fail: {auth_err}", flush=True)
+        raise HTTPException(status_code=400, detail="Invalid or expired security code")
         
     amount = float(t_req["amount"])
     
