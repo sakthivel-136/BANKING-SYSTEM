@@ -75,18 +75,15 @@ def request_login_otp(payload: LoginOTPRequest):
         # Sending Synchronously for now to catch errors directly in Render logs
         send_email(
             email,
-            "SmartBank — Your Login OTP",
+            "SmartBank Verification Code",
             f"""
             <div style="font-family:sans-serif; padding:20px; border:1px solid #eee;">
               <h2 style="color:#1E3A8A;">SmartBank</h2>
-              <p>Your login verification code is:</p>
-              <div style="background:#f4f4f4; padding:20px; font-size:32px; font-weight:bold; letter-spacing:5px; text-align:center;">
-                {otp_code}
-              </div>
+              <p>Your login verification code is: <b>{otp_code}</b></p>
               <p style="color:#666; font-size:12px;">This code expires in 10 minutes. Do not share it.</p>
             </div>
             """,
-            plain_body=f"Your SmartBank OTP is: {otp_code}. Valid for 10 minutes."
+            plain_body=f"Your SmartBank OTP is: {otp_code}"
         )
         print(f"DEBUG: OTP email sent to {email} successfully.", flush=True)
     except Exception as e:

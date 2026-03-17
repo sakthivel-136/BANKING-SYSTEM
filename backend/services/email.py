@@ -41,12 +41,11 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
         msg.attach(MIMEText(plain_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    # Try primary port first, then attempt fallback
-    ports_to_try = [SMTP_PORT]
-    if SMTP_PORT == 587: ports_to_try.append(465)
-    elif SMTP_PORT == 465: ports_to_try.append(587)
+    # Try 587 first (TLS), then 465 (SSL)
+    ports_to_try = [587, 465]
+    if SMTP_PORT == 465: ports_to_try = [465, 587]
 
-    last_error = None
+    last_error = Exception("No SMTP connection attempted")
     for port in ports_to_try:
         try:
             print(f"DEBUG: Handshaking with {SMTP_HOST}:{port}...", flush=True)
@@ -62,7 +61,7 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
             server.login(str(SMTP_USER), clean_password)
             
             print(f"DEBUG: Sending data to {to}...", flush=True)
-            server.sendmail(str(FROM_EMAIL), to, msg.as_string())
+            server.send_message(msg)
             server.quit()
             print(f"DEBUG: SUCCESS sending email to {to} via port {port}", flush=True)
             return # Success!
