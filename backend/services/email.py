@@ -57,8 +57,8 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
 
     last_error = Exception("All SMTP strategies failed")
     for s in strategies:
-        host = s["host"]
-        port = s["port"]
+        host = str(s["host"])
+        port = int(s["port"])
         try:
             print(f"DEBUG: Attempting connection to {host}:{port} (IPv4 Forced)...", flush=True)
             if port == 465:
@@ -66,9 +66,10 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
                 raw_sock = get_ipv4_socket(host, port, 10)
                 import ssl
                 context = ssl.create_default_context()
-                sslsock = context.wrap_socket(raw_sock, server_hostname=host if not host[0].isdigit() else "smtp.gmail.com")
-                server = smtplib.SMTP_SSL(host, port, timeout=10) # Fallback to standard if wrap fails
-                # In most cases SMTP_SSL is fine if we just want to try
+                # Use a str hostname for SSL SNI
+                hostname = host if not (host.replace('.', '').isdigit()) else "smtp.gmail.com"
+                sslsock = context.wrap_socket(raw_sock, server_hostname=hostname)
+                server = smtplib.SMTP_SSL(host, port, timeout=10) 
             else:
                 server = smtplib.SMTP(host, port, timeout=10)
                 server.ehlo()
