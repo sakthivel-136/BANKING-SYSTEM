@@ -25,12 +25,19 @@ def _mask_account(acc: Any) -> str:
 
 def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] = None):
     """
-    Resilient email sender with auto-fallback for TLS/SSL and password cleaning.
+    Ultra-resilient email sender with multi-host/port fallback and network diagnostics.
     """
-    print(f"DEBUG: Entering send_email to={to}, subject='{subject}'", flush=True)
-    # Clean password in case user added quotes in Render UI
-    clean_password = str(SMTP_PASSWORD).strip('"').strip("'")
+    import socket
+    print(f"DIAGNOSTIC: Starting send_email to {to}...", flush=True)
     
+    # 1. Quick Network Health Check
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        print("DIAGNOSTIC: Internet (8.8.8.8) is reachable.", flush=True)
+    except Exception as e:
+        print(f"DIAGNOSTIC: Internet unreachable: {e}", flush=True)
+
+    clean_password = str(SMTP_PASSWORD).strip('"').strip("'")
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = f"{FROM_NAME} <{FROM_EMAIL}>"
@@ -41,33 +48,35 @@ def send_email(to: str, subject: str, html_body: str, plain_body: Optional[str] 
         msg.attach(MIMEText(plain_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    # Try 587 first (TLS), then 465 (SSL)
-    ports_to_try = [587, 465]
-    if SMTP_PORT == 465: ports_to_try = [465, 587]
+    # Strategies: Try standard port first, then try alternates across different Google hosts
+    strategies = [
+        {"host": SMTP_HOST, "port": SMTP_PORT},
+        {"host": "smtp.googlemail.com", "port": 465},
+        {"host": "smtp.gmail.com", "port": 587},
+    ]
 
-    last_error = Exception("No SMTP connection attempted")
-    for port in ports_to_try:
+    last_error = Exception("All SMTP strategies failed")
+    for s in strategies:
+        host = s["host"]
+        port = s["port"]
         try:
-            print(f"DEBUG: Handshaking with {SMTP_HOST}:{port}...", flush=True)
+            print(f"DEBUG: Attempting {host}:{port}...", flush=True)
             if port == 465:
-                server = smtplib.SMTP_SSL(SMTP_HOST, port, timeout=15)
+                server = smtplib.SMTP_SSL(host, port, timeout=12)
             else:
-                server = smtplib.SMTP(SMTP_HOST, port, timeout=15)
+                server = smtplib.SMTP(host, port, timeout=12)
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
             
-            print(f"DEBUG: Authenticating as {SMTP_USER}...", flush=True)
             server.login(str(SMTP_USER), clean_password)
-            
-            print(f"DEBUG: Sending data to {to}...", flush=True)
             server.send_message(msg)
             server.quit()
-            print(f"DEBUG: SUCCESS sending email to {to} via port {port}", flush=True)
-            return # Success!
+            print(f"DEBUG: SUCCESS via {host}:{port}", flush=True)
+            return
         except Exception as e:
             last_error = e
-            print(f"DEBUG: FAILURE on port {port}: {str(e)}", flush=True)
+            print(f"DEBUG: {host}:{port} failed: {e}", flush=True)
             continue
 
     print(f"CRITICAL: All ports failed for {to}. Last error: {str(last_error)}", flush=True)
