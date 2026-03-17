@@ -69,7 +69,7 @@ export default function Login() {
     try {
       const res = await api.post("/auth/login-otp/request", { customer_id: customerId })
       setOtpStep("verify")
-      setSuccessMsg(res.data.message || "OTP has been sent to your registered email.")
+      setSuccessMsg("OTP has been sent to your registered email.")
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Failed to send OTP.")
     }
