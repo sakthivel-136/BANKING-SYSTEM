@@ -236,7 +236,10 @@ def verify_password(payload: dict, user: Dict[str, Any] = Depends(get_current_us
 @router.get("/test-connectivity")
 def test_connectivity(email: str):
     """Diagnostic endpoint to test email connectivity directly in the browser."""
-    from services.email import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL
+    try:
+        from services.email import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL
+    except ImportError:
+        from backend.services.email import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL
     results = {
         "diagnostic_step": "init",
         "config": {

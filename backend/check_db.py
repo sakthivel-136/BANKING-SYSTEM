@@ -1,4 +1,10 @@
-from database import supabase
+try:
+    from database import supabase
+except ImportError:
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from database import supabase
 import sys
 
 def check_customer(customer_number):
